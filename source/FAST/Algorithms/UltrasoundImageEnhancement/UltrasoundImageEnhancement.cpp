@@ -20,11 +20,11 @@ UltrasoundImageEnhancement::UltrasoundImageEnhancement() {
 
 void UltrasoundImageEnhancement::execute() {
     Image::pointer input = getInputData<Image>(0);
-    if(input->getNrOfComponents() != 1 || input->getDataType() != TYPE_UINT8) {
-        throw Exception("UltrasoundImageEnhancement expects input to be of type UINT8 and have 1 channel");
+    if(input->getDataType() != TYPE_UINT8) {
+        throw Exception("UltrasoundImageEnhancement expects input to be of type UINT8");
     }
 
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     if(!mColormapUploaded) {
         mColormapBuffer = cl::Buffer(device->getContext(), CL_MEM_COPY_HOST_PTR, 256*3*sizeof(uchar), mColormap.data());
         mColormapUploaded = true;

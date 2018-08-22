@@ -174,7 +174,7 @@ void regionGrowing(Image::pointer volume, Segmentation::pointer segmentation, co
 }
 
 Image::pointer AirwaySegmentation::convertToHU(Image::pointer image) {
-	OpenCLDevice::pointer device = getMainDevice();
+	OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 	cl::Program program = getOpenCLProgram(device);
 
 	OpenCLImageAccess::pointer input = image->getOpenCLImageAccess(ACCESS_READ, device);
@@ -210,7 +210,7 @@ void AirwaySegmentation::morphologicalClosing(Segmentation::pointer segmentation
 	int depth = segmentation->getDepth();
 
 	// TODO need support for no 3d write
-	OpenCLDevice::pointer device = getMainDevice();
+	OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 	cl::Program program = getOpenCLProgram(device);
 
 	Segmentation::pointer segmentation2 = Segmentation::New();
@@ -275,12 +275,14 @@ void AirwaySegmentation::execute() {
 	}
 
 	// Smooth image
-	GaussianSmoothingFilter::pointer filter = GaussianSmoothingFilter::New();
-	filter->setInputData(image);
-	filter->setStandardDeviation(0.5);
-	DataPort::pointer port = filter->getOutputPort();
-	filter->update(0);
-	image = port->getNextFrame();
+	if(mSmoothingSigma > 0) {
+		GaussianSmoothingFilter::pointer filter = GaussianSmoothingFilter::New();
+        filter->setInputData(image);
+        filter->setStandardDeviation(mSmoothingSigma);
+        DataPort::pointer port = filter->getOutputPort();
+        filter->update(0);
+        image = port->getNextFrame<Image>();
+    }
 
 	// Find seed voxel
 	Vector3i seed;
@@ -317,6 +319,10 @@ void AirwaySegmentation::setSeedPoint(int x, int y, int z) {
 void AirwaySegmentation::setSeedPoint(Vector3i seed) {
 	mSeedPoint = seed;
 	mUseManualSeedPoint = true;
+}
+
+void AirwaySegmentation::setSmoothing(float sigma) {
+	mSmoothingSigma = sigma;
 }
 
 }

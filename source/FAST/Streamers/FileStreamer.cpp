@@ -17,10 +17,10 @@ FileStreamer::FileStreamer() {
     mFirstFrameIsInserted = false;
     mHasReachedEnd = false;
     mTimestampFilename = "";
-    mNrOfFrames = 0;
+    mNrOfFrames = -1;
     mSleepTime = 0;
     mStepSize = 1;
-    mMaximumNrOfFramesSet = false;
+    mMaximumNrOfFrames = -1;
     mStop = false;
 }
 
@@ -28,7 +28,30 @@ void FileStreamer::setNumberOfReplays(uint replays) {
     mNrOfReplays = replays;
 }
 
-uint FileStreamer::getNrOfFrames() const {
+int FileStreamer::getNrOfFrames() {
+    if(mNrOfFrames == -1) {
+        if(mMaximumNrOfFrames > 0) {
+            mNrOfFrames = mMaximumNrOfFrames;
+            return mNrOfFrames;
+        }
+        int frameCounter = 0;
+        int frame = mStartNumber;
+        int currentSequence = 0;
+        while(true) {
+            std::string filename = getFilename(frame, currentSequence);
+            if(!fileExists(filename)) {
+                // If file doesn't exists, move on to next sequence or stop
+                if(currentSequence < mFilenameFormats.size()-1) {
+                    currentSequence++;
+                } else {
+                    break;
+                }
+            }
+            frame += mStepSize;
+            frameCounter++;
+        }
+        mNrOfFrames = frameCounter;
+    }
     return mNrOfFrames;
 }
 
@@ -80,9 +103,9 @@ void FileStreamer::producerStream() {
 
     // Read timestamp file if available
     std::ifstream timestampFile;
-    unsigned long previousTimestamp = 0;
+    uint64_t previousTimestamp = 0;
     auto previousTimestampTime = std::chrono::high_resolution_clock::time_point::min();
-    if(mTimestampFilename != "") {
+    if(!mTimestampFilename.empty() && mUseTimestamp) {
         timestampFile.open(mTimestampFilename.c_str());
         if(!timestampFile.is_open()) {
             throw Exception("Timestamp file not found in FileStreamer");
@@ -112,50 +135,38 @@ void FileStreamer::producerStream() {
                 break;
             }
         }
-        std::string filename = mFilenameFormats[currentSequence];
-        std::string frameNumber = std::to_string(i);
-        if(mZeroFillDigits > 0 && frameNumber.size() < mZeroFillDigits) {
-            std::string zeroFilling = "";
-            for(uint z = 0; z < mZeroFillDigits-frameNumber.size(); z++) {
-                zeroFilling += "0";
-            }
-            frameNumber = zeroFilling + frameNumber;
-        }
-        filename.replace(
-                filename.find("#"),
-                1,
-                frameNumber
-        );
+        std::string filename = getFilename(i, currentSequence);
         try {
             reportInfo() << "Filestreamer reading " << filename << reportEnd();
             DataObject::pointer dataFrame = getDataFrame(filename);
             // Set and use timestamp if available
-            if(mTimestampFilename != "") {
+            if(!mTimestampFilename.empty() && mUseTimestamp) {
                 std::string line;
                 std::getline(timestampFile, line);
-                if(line != "") {
-                    unsigned long timestamp = std::stoul(line);
+                if(!line.empty()) {
+					uint64_t timestamp = std::stoull(line);
                     dataFrame->setCreationTimestamp(timestamp);
-                    // Wait as long as necessary before adding image
-                    auto timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::high_resolution_clock::now() - previousTimestampTime);
-                    //reportInfo() << timestamp << reportEnd();
-                    //reportInfo() << previousTimestamp << reportEnd();
-                    //reportInfo() << "Time passed: " << timePassed.count() << reportEnd();
-                    while(timestamp > previousTimestamp + timePassed.count()) {
-                        // Wait
-                        std::this_thread::sleep_for(std::chrono::milliseconds(timestamp-(long)previousTimestamp-timePassed.count()));
-                        timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                std::chrono::high_resolution_clock::now() - previousTimestampTime);
-                        //reportInfo() << "wait" << reportEnd();
-                        //reportInfo() << timestamp << reportEnd();
-                        //reportInfo() << previousTimestamp << reportEnd();
-                        //reportInfo() << "Time passed: " << timePassed.count() << reportEnd();
-                    }
-                    previousTimestamp = timestamp;
-                    previousTimestampTime = std::chrono::high_resolution_clock::now();
                 }
             }
+
+            if(dataFrame->getCreationTimestamp() != 0 && mUseTimestamp) {
+                uint64_t timestamp = dataFrame->getCreationTimestamp();
+                // Wait as long as necessary before adding image
+                // Time passed since last frame
+                auto timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::high_resolution_clock::now() - previousTimestampTime);
+                while (timestamp > previousTimestamp + timePassed.count()) {
+                    // Wait
+                    int64_t left = (timestamp - previousTimestamp) - timePassed.count();
+                    reportInfo() << "Sleeping for " << left << " ms" << reportEnd();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(left));
+                    timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::high_resolution_clock::now() - previousTimestampTime);
+                }
+                previousTimestamp = timestamp;
+                previousTimestampTime = std::chrono::high_resolution_clock::now();
+            }
+
             addOutputData(0, dataFrame);
 
             if(!mFirstFrameIsInserted) {
@@ -167,8 +178,11 @@ void FileStreamer::producerStream() {
             }
             if(mSleepTime > 0)
                 std::this_thread::sleep_for(std::chrono::milliseconds(mSleepTime));
-            mNrOfFrames++;
             i += mStepSize;
+            if(i == mMaximumNrOfFrames) {
+                throw FileNotFoundException();
+            }
+
         } catch(FileNotFoundException &e) {
             if(i > 0) {
                 reportInfo() << "Reached end of stream" << Reporter::end();
@@ -184,9 +198,9 @@ void FileStreamer::producerStream() {
                    (mNrOfReplays > 0 && replays != mNrOfReplays) ||
                    (currentSequence < mFilenameFormats.size()-1)) {
                     // Restart stream
+                    previousTimestamp = 0;
+                    previousTimestampTime = std::chrono::high_resolution_clock::time_point::min();
                     if(timestampFile.is_open()) {
-                        previousTimestamp = 0;
-                        previousTimestampTime = std::chrono::high_resolution_clock::time_point::min();
                         timestampFile.seekg(0); // reset file to start
                     }
                     replays++;
@@ -204,8 +218,28 @@ void FileStreamer::producerStream() {
             } else {
                 throw e;
             }
+        } catch(ThreadStopped &e) {
+            break;
         }
     }
+}
+
+std::string FileStreamer::getFilename(uint i, int currentSequence) const {
+    std::string filename = mFilenameFormats[currentSequence];
+    std::string frameNumber = std::to_string(i);
+    if(mZeroFillDigits > 0 && frameNumber.size() < mZeroFillDigits) {
+            std::string zeroFilling = "";
+            for(uint z = 0; z < mZeroFillDigits - frameNumber.size(); z++) {
+                zeroFilling += "0";
+            }
+            frameNumber = zeroFilling + frameNumber;
+        }
+    filename.replace(
+                filename.find("#"),
+                1,
+                frameNumber
+        );
+    return filename;
 }
 
 FileStreamer::~FileStreamer() {
@@ -251,6 +285,10 @@ void FileStreamer::stop() {
     }
     mThread->join();
     reportInfo() << "File streamer thread returned" << reportEnd();
+}
+
+void FileStreamer::setUseTimestamp(bool use) {
+    mUseTimestamp = use;
 }
 
 } // end namespace fast

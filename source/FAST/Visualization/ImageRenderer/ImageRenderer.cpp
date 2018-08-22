@@ -19,9 +19,7 @@
 
 namespace fast {
 
-#ifndef GL_RGBA32F // this is missing on windows and mac for some reason
-#define GL_RGBA32F 0x8814 
-#endif
+
 
 
 ImageRenderer::ImageRenderer() : Renderer() {
@@ -66,7 +64,7 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
     std::lock_guard<std::mutex> lock(mMutex);
 
     for(auto it : mDataToRender) {
-        Image::pointer input = it.second;
+        Image::pointer input = std::static_pointer_cast<Image>(it.second);
         uint inputNr = it.first;
 
         if(input->getDimensions() != 2)
@@ -89,7 +87,7 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
             level = getDefaultIntensityLevel(input->getDataType());
         }
 
-        OpenCLDevice::pointer device = getMainDevice();
+        OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 
         OpenCLImageAccess::pointer access = input->getOpenCLImageAccess(ACCESS_READ, device);
         cl::Image2D *clImage = access->get2DImage();
@@ -159,29 +157,27 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
             queue.enqueueReleaseGLObjects(&v);
         } else {*/
         // Copy data from CL image to CPU
-        float *data = new float[input->getWidth() * input->getHeight() * 4];
+        auto data = make_uninitialized_unique<float[]>(input->getWidth() * input->getHeight() * 4);
         queue.enqueueReadImage(
                 image,
                 CL_TRUE,
                 createOrigoRegion(),
                 createRegion(input->getWidth(), input->getHeight(), 1),
                 0, 0,
-                data
+                data.get()
         );
         // Copy data from CPU to GL texture
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data.get());
         glBindTexture(GL_TEXTURE_2D, 0);
         glFinish();
-        delete[] data;
         //}
 
         mTexturesToRender[inputNr] = textureID;
         mImageUsed[inputNr] = input;
-        queue.finish();
     }
 
     drawTextures(perspectiveMatrix, viewingMatrix, mode2D);
@@ -190,7 +186,7 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
 
 void ImageRenderer::drawTextures(Matrix4f &perspectiveMatrix, Matrix4f &viewingMatrix, bool mode2D) {
     for(auto it : mDataToRender) {
-        Image::pointer input = it.second;
+        Image::pointer input = std::static_pointer_cast<Image>(it.second);
         uint inputNr = it.first;
         // Create VAO
         uint VAO_ID;

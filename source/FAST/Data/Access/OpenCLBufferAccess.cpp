@@ -19,7 +19,7 @@ OpenCLBufferAccess::OpenCLBufferAccess(cl::Buffer* buffer,  SharedPointer<Image>
 void OpenCLBufferAccess::release() {
     if(!mIsDeleted) {
         delete mBuffer;
-        mBuffer = new cl::Buffer(); // assign a new blank object
+        mBuffer = nullptr;
         mIsDeleted = true;
     }
 	mImage->accessFinished();

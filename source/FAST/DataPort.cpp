@@ -25,22 +25,24 @@ void DataPort::addFrame(DataObject::pointer object) {
         mFrameConditionVariable.notify_all();
 
     } else if(mStreamingMode == STREAMING_MODE_PROCESS_ALL_FRAMES) {
+        std::unique_lock<std::mutex> lock(mMutex);
         if(!mIsStaticData) {
             // If data is not static, use semaphore to check if available space for a new frame
             //std::cout << mProcessObject->getNameOfClass() + " waiting to add " << mCurrentTimestep << " (" << mFrameCounter << ") PROCESS_ALL_FRAMES" << std::endl;
             if(!mGetCalled && mFillCount->getCount() == mMaximumNumberOfFrames)
                 Reporter::error() << "EXECUTION BLOCKED by DataPort from " << mProcessObject->getNameOfClass() << ". Do you have a DataPort object that is not used?" << Reporter::end();
+            lock.unlock();
             mEmptyCount->wait();
+            lock.lock();
 
             // If stop signal has been set, return
             if(mStop) {
-                return;
+                throw ThreadStopped();
             }
         }
 
         {
             // Add data
-            std::lock_guard<std::mutex> lock(mMutex);
             if(mCurrentTimestep > mFrameCounter)
                 mFrameCounter = mCurrentTimestep;
             //std::cout << mProcessObject->getNameOfClass() + " adding frame with nr " << mFrameCounter << std::endl;
@@ -51,9 +53,11 @@ void DataPort::addFrame(DataObject::pointer object) {
 
         if(!mIsStaticData) {
             // If data is not static, use semaphore to signal that a new data is available
+            lock.unlock();
             mFillCount->signal();
         } else {
             // If data is static, use condition variable to signal that a new data is available
+            lock.unlock();
             mFrameConditionVariable.notify_all();
         }
 
@@ -73,7 +77,7 @@ void DataPort::addFrame(DataObject::pointer object) {
     }
 }
 
-DataObject::pointer DataPort::getNextFrame() {
+DataObject::pointer DataPort::getNextDataFrame() {
     // getNextFrame should **always** return the frame at the current timestep
     DataObject::pointer data;
     {
@@ -89,21 +93,16 @@ DataObject::pointer DataPort::getNextFrame() {
         } else {
             lock.lock();
             // Do this using condition variable
-            while(mFrames.count(mCurrentTimestep) == 0) {
+            while(mFrames.count(mCurrentTimestep) == 0 && !mStop) {
                 //std::cout << "Waiting for " << mCurrentTimestep << std::endl;
                 mFrameConditionVariable.wait(lock);
             }
         }
 
         if(mStop) {
-            if(mFrames.count(mCurrentTimestep) > 0) {
-                return mFrames.at(mCurrentTimestep);
-            } else {
-                return mFrames.at(mCurrentTimestep - 1);
-            }
+            throw ThreadStopped();
         }
 
-        //std::cout << "Trying to get frame at " << mCurrentTimestep << std::endl;
         data = mFrames.at(mCurrentTimestep);
 
         if(mStreamingMode != STREAMING_MODE_STORE_ALL_FRAMES) {
@@ -168,18 +167,23 @@ void DataPort::setMaximumNumberOfFrames(uint frames) {
     if(mFrameCounter > 0)
         throw Exception("Have to call setMaximumNumberOfFrames before executing pipeline");
     mMaximumNumberOfFrames = frames;
-    mFillCount = UniquePointer<LightweightSemaphore>(new LightweightSemaphore(0));
-    mEmptyCount = UniquePointer<LightweightSemaphore>(new LightweightSemaphore(mMaximumNumberOfFrames));
+    mFillCount = std::make_unique<LightweightSemaphore>(0);
+    mEmptyCount = std::make_unique<LightweightSemaphore>(mMaximumNumberOfFrames);
 }
 
 void DataPort::stop() {
-    mStop = true;
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mStop = true;
+    }
+    // Pipeline has been ordered to stop, wake up any threads.
     Reporter::info() << "STOPPING in DataPort for PO " << mProcessObject->getNameOfClass() << Reporter::end();
     if(mStreamingMode == STREAMING_MODE_PROCESS_ALL_FRAMES && !mIsStaticData) {
         Reporter::info() << "SIGNALING SEMAPHORES" << Reporter::end();
         mFillCount->signal();
         mEmptyCount->signal();
     } else {
+        Reporter::info() << "Notifying condition variables" << Reporter::end();
         mFrameConditionVariable.notify_all();
     }
 }
@@ -197,6 +201,10 @@ DataObject::pointer DataPort::getFrame(uint64_t timestep) {
     return mFrames.at(timestep);
 }
 
+template <>
+SharedPointer<DataObject> DataPort::getNextFrame<DataObject>() {
+    return getNextDataFrame();
+}
 
 
 } // end namespace fast

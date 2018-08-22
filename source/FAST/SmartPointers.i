@@ -17,7 +17,7 @@ class SharedPointer {
 
 // Below are cryptic SWIG macro and typemap definitions copied from boost_shared_ptr.i
 // and changed to work for fast::SharedPointer.
-// This is needed for casting to work from SharedPointer<Derived> to SharedPointer<Base> 
+// This is needed for casting to work from SharedPointer<Derived> to SharedPointer<Base>
 
 %fragment("SWIG_null_deleter", "header") {
 struct SWIG_null_deleter {

@@ -17,21 +17,21 @@ uint HeatmapRenderer::addInputConnection(DataPort::pointer port, Color color) {
 
 void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, bool mode2D) {
     std::lock_guard<std::mutex> lock(mMutex);
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::CommandQueue queue = device->getCommandQueue();
 
     std::vector<Color> colorList = {
         Color::Green(),
         Color::Blue(),
         Color::Red(),
-        Color::Purple(),
+        Color::Magenta(),
         Color::Yellow(),
         Color::Cyan(),
     };
 
     cl::Kernel kernel(getOpenCLProgram(device), "renderToTexture");
     for(auto it : mDataToRender) {
-        Image::pointer input = it.second;
+        Image::pointer input = std::static_pointer_cast<Image>(it.second);
         uint inputNr = it.first;
 
         if(input->getDataType() != TYPE_FLOAT) {
@@ -113,24 +113,23 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, b
             queue.enqueueReleaseGLObjects(&v);
         } else {*/
         // Copy data from CL image to CPU
-        float *data = new float[input->getWidth() * input->getHeight() * 4];
+        auto data = make_uninitialized_unique<float[]>(input->getWidth() * input->getHeight() * 4);
         queue.enqueueReadImage(
                 image,
                 CL_TRUE,
                 createOrigoRegion(),
                 createRegion(input->getWidth(), input->getHeight(), 1),
                 0, 0,
-                data
+                data.get()
         );
         // Copy data from CPU to GL texture
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data.get());
         glBindTexture(GL_TEXTURE_2D, 0);
         glFinish();
-        delete[] data;
         //}
 
         mTexturesToRender[inputNr] = textureID;
@@ -138,9 +137,10 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, b
         queue.finish();
     }
 
-    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC1_COLOR);
     drawTextures(perspectiveMatrix, viewingMatrix, mode2D);
-    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
 
 }
 

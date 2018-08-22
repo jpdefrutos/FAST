@@ -2,7 +2,6 @@
 #define EXECUTIONDEVICE_HPP_
 
 #include "FAST/Object.hpp"
-#include "FAST/SmartPointers.hpp"
 #include "RuntimeMeasurementManager.hpp"
 
 namespace fast {
@@ -17,6 +16,7 @@ class FAST_EXPORT  ExecutionDevice : public Object {
         }
     protected:
         bool mIsHost;
+        std::weak_ptr<ExecutionDevice> mPtr;
 
 };
 

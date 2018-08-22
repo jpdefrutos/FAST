@@ -39,7 +39,7 @@ SegmentationRenderer::SegmentationRenderer() {
     mLabelColors[Segmentation::LABEL_NERVE] = Color::Yellow();
     mLabelColors[Segmentation::LABEL_YELLOW] = Color::Yellow();
     mLabelColors[Segmentation::LABEL_GREEN] = Color::Green();
-    mLabelColors[Segmentation::LABEL_PURPLE] = Color::Purple();
+    mLabelColors[Segmentation::LABEL_MAGENTA] = Color::Magenta();
     mLabelColors[Segmentation::LABEL_RED] = Color::Red();
     mLabelColors[Segmentation::LABEL_WHITE] = Color::White();
     mLabelColors[Segmentation::LABEL_BLUE] = Color::Blue();
@@ -47,11 +47,12 @@ SegmentationRenderer::SegmentationRenderer() {
 
 void SegmentationRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, bool mode2D) {
     std::lock_guard<std::mutex> lock(mMutex);
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
+
 
     if(mColorsModified) {
         // Transfer colors to device (this doesn't have to happen every render call..)
-        UniquePointer<float[]> colorData(new float[3*mLabelColors.size()]);
+        std::unique_ptr<float[]> colorData(new float[3*mLabelColors.size()]);
         std::unordered_map<int, Color>::iterator it;
         for(it = mLabelColors.begin(); it != mLabelColors.end(); it++) {
             colorData[it->first*3] = it->second.getRedValue();
@@ -69,7 +70,7 @@ void SegmentationRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
 
     if(mFillAreaModified) {
         // Transfer colors to device (this doesn't have to happen every render call..)
-        UniquePointer<char[]> fillAreaData(new char[mLabelColors.size()]);
+        std::unique_ptr<char[]> fillAreaData(new char[mLabelColors.size()]);
         std::unordered_map<int, Color>::iterator it;
         for(it = mLabelColors.begin(); it != mLabelColors.end(); it++) {
             if(mLabelFillArea.count(it->first) == 0) {
@@ -92,10 +93,11 @@ void SegmentationRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
     mKernel.setArg(2, mColorBuffer);
     mKernel.setArg(3, mFillAreaBuffer);
     mKernel.setArg(4, mBorderRadius);
+    mKernel.setArg(5, mOpacity);
 
 
     for(auto it : mDataToRender) {
-        Image::pointer input = it.second;
+        Image::pointer input = std::static_pointer_cast<Image>(it.second);
         uint inputNr = it.first;
 
         if(input->getDimensions() != 2)
@@ -172,24 +174,23 @@ void SegmentationRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
             queue.enqueueReleaseGLObjects(&v);
         } else {*/
         // Copy data from CL image to CPU
-        float *data = new float[input->getWidth() * input->getHeight() * 4];
+        auto data = make_uninitialized_unique<float[]>(input->getWidth() * input->getHeight() * 4);
         queue.enqueueReadImage(
                 image,
                 CL_TRUE,
                 createOrigoRegion(),
                 createRegion(input->getWidth(), input->getHeight(), 1),
                 0, 0,
-                data
+                data.get()
         );
         // Copy data from CPU to GL texture
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data.get());
         glBindTexture(GL_TEXTURE_2D, 0);
         glFinish();
-        delete[] data;
         //}
 
         mTexturesToRender[inputNr] = textureID;
@@ -197,9 +198,10 @@ void SegmentationRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
         queue.finish();
     }
 
-    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     drawTextures(perspectiveMatrix, viewingMatrix, mode2D);
-    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
 }
 
 void SegmentationRenderer::setBorderRadius(int radius) {
@@ -207,6 +209,12 @@ void SegmentationRenderer::setBorderRadius(int radius) {
         throw Exception("Border radius must be >= 0");
 
     mBorderRadius = radius;
+}
+
+void SegmentationRenderer::setOpacity(float opacity) {
+    if(opacity < 0 || opacity > 1)
+        throw Exception("SegmentationRenderer opacity has to be >= 0 and <= 1");
+    mOpacity = opacity;
 }
 
 }

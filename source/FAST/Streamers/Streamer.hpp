@@ -2,7 +2,7 @@
 #define STREAMER_HPP_
 
 #include <FAST/ProcessObject.hpp>
-#include "FAST/SmartPointers.hpp"
+
 #include "FAST/Data/DataTypes.hpp"
 #include "FAST/Exception.hpp"
 

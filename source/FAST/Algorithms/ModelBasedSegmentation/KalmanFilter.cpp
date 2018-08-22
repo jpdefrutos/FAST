@@ -35,7 +35,7 @@ VectorXf KalmanFilter::getCurrentState() const {
 
 void KalmanFilter::execute() {
     reportInfo() << "Executing Kalman filter.." << reportEnd();
-	if(!mShapeModel.isValid() || !mAppearanceModel.isValid())
+	if(!mShapeModel || !mAppearanceModel)
 		throw Exception("Shape and appearance model must be given to the Kalman filter before execution.");
 
 	Image::pointer image = getInputData<Image>();

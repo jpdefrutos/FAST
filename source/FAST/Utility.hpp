@@ -151,18 +151,42 @@ FAST_EXPORT Matrix4f loadPerspectiveMatrix(float fovy, float aspect, float zNear
 
 FAST_EXPORT Matrix4f loadOrthographicMatrix(float left, float right, float bottom, float top, float zNear, float zFar);
 
-/*
+/**
  * Creates a directory at the given path.
  * Throws exception if it fails
  */
 FAST_EXPORT void createDirectory(std::string path);
 
-/*
+/**
  * Creates all directories in the given path.
  * Throws exception if it fails
  */
 FAST_EXPORT void createDirectories(std::string path);
 
+/**
+ * Check if file exists
+ * @param filename
+ * @return
+ */
+FAST_EXPORT bool fileExists(std::string filename);
+
+/**
+ * Returns a list of all files in a directory
+ * @param path
+ * @param getFiles Set to true to find files in directory
+ * @param getDirectories Set to true to find subdirectories
+ * @return list of files or subdirectories
+ */
+FAST_EXPORT std::vector<std::string> getDirectoryList(std::string path, bool getFiles = true, bool getDirectories = false);
+
+/**
+ * Returns the dir name of the given path. Example: getDirName("/home/user/something/file.txt")
+ * returns home/user/something/.
+ *
+ * @param path
+ * @return
+ */
+FAST_EXPORT std::string getDirName(std::string path);
 
 /**
  * Returns a string of the current date
@@ -170,6 +194,54 @@ FAST_EXPORT void createDirectories(std::string path);
  * @return
  */
 FAST_EXPORT std::string currentDateTime(std::string format = "%Y-%m-%d-%H%M%S");
+
+/**
+ * Removes trailing /
+ * @param path
+ * @return
+ */
+FAST_EXPORT std::string join(std::string path);
+
+/**
+ * Join multiple paths.
+ *
+ * @tparam T
+ * @param path1
+ * @param args
+ * @return
+ */
+template<typename ...T>
+std::string join(std::string path1, T... args) {
+    return join(path1) + "/" + join(args...);
+}
+
+/**
+ * Check if path is a file.
+ * @param path
+ * @return
+ */
+FAST_EXPORT bool isFile(const std::string& path);
+
+/**
+ * Check if path is a directory.
+ * @param path
+ * @return
+ */
+FAST_EXPORT bool isDir(const std::string& path);
+
+/**
+ * Same as make_unique(std::size_t size), except this version will not
+ * value initialize the dynamic array. This is useful for large arrays.
+ * @tparam T
+ * @param size
+ * @return
+ */
+template <class T>
+std::unique_ptr<T> make_uninitialized_unique(std::size_t size) {
+    return std::unique_ptr<T>(new typename std::remove_extent<T>::type[size]);
+}
+
+
 
 } // end namespace fast
 

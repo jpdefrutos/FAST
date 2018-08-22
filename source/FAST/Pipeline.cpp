@@ -49,7 +49,7 @@ void Pipeline::parseProcessObject(
 
         std::string name = tokens[1];
 
-        std::shared_ptr<Attribute> attribute = object->getAttribute(name);
+        SharedPointer<Attribute> attribute = object->getAttribute(name);
         std::string attributeValues = line.substr(line.find(name) + name.size());
         trim(attributeValues);
         attribute->parseInput(attributeValues);
@@ -84,7 +84,7 @@ void Pipeline::parseProcessObject(
 
 
         if(isRenderer) {
-            SharedPointer<Renderer> renderer = object;
+            SharedPointer<Renderer> renderer = std::static_pointer_cast<Renderer>(object);
             // TODO fix text renderer no supprt addInput
             if(inputID == "PipelineInput") {
                 mInputProcessObjects[objectID] = 0;
@@ -179,7 +179,7 @@ std::vector<SharedPointer<Renderer>> Pipeline::setup(std::vector<DataPort::point
     // Get renderers
     std::vector<SharedPointer<Renderer>> renderers;
     for(auto renderer : mRenderers) {
-        renderers.push_back(mProcessObjects[renderer]);
+        renderers.push_back(std::static_pointer_cast<Renderer>(mProcessObjects[renderer]));
     }
 
     Reporter::info() << "Finished setting up pipeline." << Reporter::end();
@@ -282,7 +282,7 @@ ProcessObjectWidget::ProcessObjectWidget(SharedPointer<ProcessObject> po, QWidge
     auto attributes = po->getAttributes();
     for(auto attr : attributes) {
         std::string id = attr.first;
-        std::shared_ptr<Attribute> attribute = attr.second;
+        SharedPointer<Attribute> attribute = attr.second;
 
         QLabel* label = new QLabel(this);
         label->setText(attribute->getName().c_str());
@@ -290,25 +290,25 @@ ProcessObjectWidget::ProcessObjectWidget(SharedPointer<ProcessObject> po, QWidge
 
         if(attribute->getType() == ATTRIBUTE_TYPE_STRING) {
             QLineEdit *textBox = new QLineEdit(this);
-            std::shared_ptr<AttributeValueString> stringAttribute = std::dynamic_pointer_cast<AttributeValueString>(
+            SharedPointer<AttributeValueString> stringAttribute = std::dynamic_pointer_cast<AttributeValueString>(
                     attribute->getValue());
             textBox->setText(stringAttribute->get().c_str());
             layout->addWidget(textBox);
         } else if(attribute->getType() == ATTRIBUTE_TYPE_FLOAT) {
             QLineEdit *textBox = new QLineEdit(this);
-            std::shared_ptr<AttributeValueFloat> stringAttribute = std::dynamic_pointer_cast<AttributeValueFloat>(
+            SharedPointer<AttributeValueFloat> stringAttribute = std::dynamic_pointer_cast<AttributeValueFloat>(
                     attribute->getValue());
             textBox->setText(std::to_string(stringAttribute->get()).c_str());
             layout->addWidget(textBox);
         } else if(attribute->getType() == ATTRIBUTE_TYPE_INTEGER) {
             QLineEdit *textBox = new QLineEdit(this);
-            std::shared_ptr<AttributeValueInteger> stringAttribute = std::dynamic_pointer_cast<AttributeValueInteger>(
+            SharedPointer<AttributeValueInteger> stringAttribute = std::dynamic_pointer_cast<AttributeValueInteger>(
                     attribute->getValue());
             textBox->setText(std::to_string(stringAttribute->get()).c_str());
             layout->addWidget(textBox);
         } else if(attribute->getType() == ATTRIBUTE_TYPE_BOOLEAN) {
             QCheckBox *checkBox = new QCheckBox(this);
-            std::shared_ptr<AttributeValueBoolean> stringAttribute = std::dynamic_pointer_cast<AttributeValueBoolean>(
+            SharedPointer<AttributeValueBoolean> stringAttribute = std::dynamic_pointer_cast<AttributeValueBoolean>(
                     attribute->getValue());
             checkBox->setChecked(stringAttribute->get());
             layout->addWidget(checkBox);

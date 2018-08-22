@@ -38,7 +38,7 @@ void SliceRenderer::execute() {
             slicer->update(0);
 
             mHasRendered = false;
-            mDataToRender[inputNr] = port->getNextFrame();
+            mDataToRender[inputNr] = port->getNextFrame<Image>();
         }
     }
 }

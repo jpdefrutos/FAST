@@ -6,8 +6,8 @@
 namespace fast {
 
 ComputationThread::ComputationThread(QThread* mainThread, StreamingMode mode) {
-    mUpdateThreadIsStopped = false;
     mIsRunning = false;
+    mStop = false;
     mMainThread = mainThread;
     mTimestep = 0;
     mStreamingMode = mode;
@@ -34,6 +34,7 @@ void ComputationThread::run() {
     {
         std::unique_lock<std::mutex> lock(mUpdateThreadMutex); // this locks the mutex
         mIsRunning = true;
+        mStop = false;
     }
     QGLContext* mainGLContext = Window::getMainGLContext();
     mainGLContext->makeCurrent();
@@ -46,51 +47,50 @@ void ComputationThread::run() {
                 mTimestep = 0;
             emit timestepIncreased();
         }
-        //std::cout << "TIMESTEP: " << mTimestep << std::endl;
-        // Update renderers' input before lock mutexes. This will ensure that renderering can happen while computing
-        for(View* view : mViews) {
-            view->updateRenderersInput(mTimestep, mStreamingMode);
+        {
+            std::unique_lock<std::mutex> lock(mUpdateThreadMutex); // this locks the mutex
+            if(mStop)
+                break;
         }
-        // Lock mutex of all renderers before update renderers. This will ensure that rendering is synchronized.
-        for(View* view : mViews) {
-            //view->lockRenderers();
-        }
-        for(View* view : mViews) {
-            view->updateRenderers(mTimestep, mStreamingMode);
-        }
-        for(View* view : mViews) {
-            //view->unlockRenderers();
-        }
-        std::unique_lock<std::mutex> lock(mUpdateThreadMutex); // this locks the mutex
-        if(mUpdateThreadIsStopped) {
-            // Move GL context back to main thread
-            mainGLContext->doneCurrent();
-            mainGLContext->moveToThread(mMainThread);
-            mIsRunning = false;
+        try {
+            for (View *view : mViews) {
+                view->updateRenderersInput(mTimestep, mStreamingMode);
+            }
+            for (View *view : mViews) {
+                view->updateRenderers(mTimestep, mStreamingMode);
+            }
+        } catch(ThreadStopped &e) {
             break;
         }
     }
 
+    // Move GL context back to main thread
+    mainGLContext->doneCurrent();
+    mainGLContext->moveToThread(mMainThread);
 
     emit finished();
     reportInfo() << "Computation thread has finished in run()" << Reporter::end();
+    {
+        std::unique_lock<std::mutex> lock(mUpdateThreadMutex); // this locks the mutex
+        mIsRunning = false;
+    }
     mUpdateThreadConditionVariable.notify_one();
 }
 
 void ComputationThread::stop() {
+    std::unique_lock<std::mutex> lock(mUpdateThreadMutex); // this locks the mutex
+    mStop = true;
     // This is run in the main thread
-    reportInfo() << "Stopping renderers..." << Reporter::end();
+    reportInfo() << "Stopping pipelines and waking any blocking threads..." << Reporter::end();
     for(View* view : mViews) {
         view->stopRenderers();
     }
-    reportInfo() << "Renderers stopped" << Reporter::end();
-    std::unique_lock<std::mutex> lock(mUpdateThreadMutex); // this locks the mutex
+    reportInfo() << "Pipelines stopped" << Reporter::end();
     reportInfo() << "Stopping computation thread..." << Reporter::end();
-    mUpdateThreadIsStopped = true;
     // Block until mIsRunning is set to false
     while(mIsRunning) {
         // Unlocks the mutex and wait until someone calls notify.
-        // When it wakes, the mutex is locked again and mUpdateIsRunning is checked.
+        // When it wakes, the mutex is locked again and mIsRunning is checked.
         mUpdateThreadConditionVariable.wait(lock);
     }
     reportInfo() << "Computation thread stopped" << Reporter::end();

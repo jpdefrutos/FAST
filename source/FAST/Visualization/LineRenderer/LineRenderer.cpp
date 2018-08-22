@@ -4,8 +4,6 @@
 #include "FAST/SceneGraph.hpp"
 
 #if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/gl.h>
 #else
 #include <GL/gl.h>
 #endif
@@ -20,7 +18,12 @@ void LineRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, bool
     setShaderUniform("viewTransform", viewingMatrix);
     // For all input data
     for(auto it : mDataToRender) {
-        Mesh::pointer points = it.second;
+        Mesh::pointer points = std::static_pointer_cast<Mesh>(it.second);
+
+        // Create VAO
+        uint VAO_ID;
+        glGenVertexArrays(1, &VAO_ID);
+        glBindVertexArray(VAO_ID);
 
         AffineTransformation::pointer transform;
         if(mode2D) {
@@ -31,6 +34,7 @@ void LineRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, bool
         }
         setShaderUniform("transform", transform->getTransform());
 
+        // TODO glLineWidth does not work with GL 3.3 CORE. Have to implemented in shader instead
         if(mInputWidths.count(it.first) > 0) {
             glLineWidth(mInputWidths[it.first]);
         } else {
@@ -82,6 +86,7 @@ void LineRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, bool
             // No EBO available; assume all vertices belong to lines consecutively
             glDrawArrays(GL_LINES, 0, points->getNrOfLines() * 2);
         }
+        glBindVertexArray(0);
 
         if(drawOnTop)
             glEnable(GL_DEPTH_TEST);

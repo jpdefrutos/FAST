@@ -238,7 +238,7 @@ DeviceManager::DeviceManager() {
     // Set one random device as default device
     setDefaultDevice(getOneOpenCLDevice(true));
 
-    OpenCLDevice::pointer device = getDefaultComputationDevice();
+    OpenCLDevice::pointer device = std::static_pointer_cast<OpenCLDevice>(getDefaultComputationDevice());
     reportInfo() << "The following device was selected as main device: " << device->getName() << reportEnd();
     if(!device->isWritingTo3DTexturesSupported()) {
         reportWarning() << "Writing directly to 3D textures/images is not supported on main device" << reportEnd();
@@ -380,7 +380,7 @@ void DeviceManager::sortDevicesAccordingToPreference(
         std::vector<PlatformDevices> platformDevices,
         DevicePreference preference,
         std::vector<cl::Device> * sortedPlatformDevices,
-        int * platformScores) {
+        std::vector<int>& platformScores) {
     for (int i = 0; i < numberOfPlatforms; i++) {
         if (platformDevices[i].second.size() == 0)
             continue;
@@ -488,7 +488,7 @@ std::vector<cl::Device> DeviceManager::getDevicesForBestPlatform(
     }
 
     std::vector<cl::Device>* sortedPlatformDevices = new std::vector<cl::Device>[platformDevices.size()];
-    int* platformScores = new int[platformDevices.size()]();
+    std::vector<int> platformScores(platformDevices.size(), 0);
     if (deviceCriteria.getDevicePreference() == DEVICE_PREFERENCE_NONE) {
         for(int i = 0; i < platformDevices.size(); i++) {
             sortedPlatformDevices[i] = platformDevices[i].second;

@@ -8,12 +8,6 @@
 #include <chrono>
 
 namespace fast {
-/**
- * Dummy function to get into the class again
- */
-inline void stubStreamThread(ManualImageStreamer * streamer) {
-    streamer->producerStream();
-}
 
 ManualImageStreamer::ManualImageStreamer() {
     mStreamIsStarted = false;
@@ -22,7 +16,7 @@ ManualImageStreamer::ManualImageStreamer() {
     mLoop = false;
     mStartNumber = 0;
     mZeroFillDigits = 0;
-    thread = NULL;
+    mStop = false;
     mFirstFrameIsInserted = false;
     mHasReachedEnd = false;
     mNrOfFrames = 0;
@@ -33,7 +27,13 @@ ManualImageStreamer::ManualImageStreamer() {
 }
 
 void ManualImageStreamer::addImage(Image::pointer image) {
-	mImages.push_back(image);
+    if(mImages.empty())
+        mImages.push_back(std::vector<Image::pointer>());
+    mImages[0].push_back(image);
+}
+
+void ManualImageStreamer::addSequence(std::vector<SharedPointer<Image>> images) {
+    mImages.push_back(images);
 }
 
 void ManualImageStreamer::setNumberOfReplays(uint replays) {
@@ -55,7 +55,7 @@ void ManualImageStreamer::execute() {
         // Check that first frame exists before starting streamer
 
         mStreamIsStarted = true;
-        thread = new std::thread(&stubStreamThread, this);
+        mThread = new std::thread(std::bind(&ManualImageStreamer::producerStream, this));
     }
 
     // Wait here for first frame
@@ -67,14 +67,41 @@ void ManualImageStreamer::execute() {
 
 
 void ManualImageStreamer::producerStream() {
-    Streamer::pointer pointerToSelf = mPtr.lock(); // try to avoid this object from being destroyed until this function is finished
-
     uint i = mStartNumber;
     int replays = 0;
+    uint64_t previousTimestamp = 0;
+    auto previousTimestampTime = std::chrono::high_resolution_clock::time_point::min();
+    int currentSequence = 0;
     while(true) {
+        {
+            std::unique_lock<std::mutex> lock(mStopMutex);
+            if(mStop) {
+                mStreamIsStarted = false;
+                mFirstFrameIsInserted = false;
+                mHasReachedEnd = false;
+                break;
+            }
+        }
         try {
-            Image::pointer image = mImages.at(i);
+            Image::pointer image = mImages[currentSequence].at(i);
             addOutputData(0, image);
+            if(image->getCreationTimestamp() != 0) {
+                uint64_t timestamp = image->getCreationTimestamp();
+                // Wait as long as necessary before adding image
+                // Time passed since last frame
+                auto timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::high_resolution_clock::now() - previousTimestampTime);
+                while (timestamp > previousTimestamp + timePassed.count()) {
+                    // Wait
+                    int64_t left = (timestamp - previousTimestamp) - timePassed.count();
+                    reportInfo() << "Sleeping for " << left << " ms" << reportEnd();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(left));
+                    timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::high_resolution_clock::now() - previousTimestampTime);
+                }
+                previousTimestamp = timestamp;
+                previousTimestampTime = std::chrono::high_resolution_clock::now();
+            }
             if(mSleepTime > 0)
                 std::this_thread::sleep_for(std::chrono::milliseconds(mSleepTime));
             if(!mFirstFrameIsInserted) {
@@ -97,10 +124,17 @@ void ManualImageStreamer::producerStream() {
                     }
                     mFirstFrameCondition.notify_one();
                 }
-                if(mLoop || (mNrOfReplays > 0 && replays != mNrOfReplays)) {
+                if(mLoop || (mNrOfReplays > 0 && replays != mNrOfReplays || (currentSequence < mImages.size()-1))) {
                     // Restart stream
+                    previousTimestamp = 0;
+                    previousTimestampTime = std::chrono::high_resolution_clock::time_point::min();
                     replays++;
                     i = mStartNumber;
+                    currentSequence++;
+                    // Go to first sequence if looping is enabled
+                    if(mLoop && currentSequence == mImages.size()) {
+                        currentSequence = 0;
+                    }
                     continue;
                 }
                 mHasReachedEnd = true;
@@ -114,13 +148,26 @@ void ManualImageStreamer::producerStream() {
 }
 
 ManualImageStreamer::~ManualImageStreamer() {
+
     if(mStreamIsStarted) {
-        if(thread->get_id() != std::this_thread::get_id()) { // avoid deadlock
-            thread->join();
+        if(mThread->get_id() != std::this_thread::get_id()) { // avoid deadlock
+            stop();
+            delete mThread;
+            mThread = NULL;
         }
-        delete thread;
     }
 }
+
+
+void ManualImageStreamer::stop() {
+    {
+        std::unique_lock<std::mutex> lock(mStopMutex);
+        mStop = true;
+    }
+    mThread->join();
+    reportInfo() << "File streamer thread returned" << reportEnd();
+}
+
 
 bool ManualImageStreamer::hasReachedEnd() {
     return mHasReachedEnd;

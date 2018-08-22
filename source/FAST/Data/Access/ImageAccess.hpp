@@ -1,7 +1,7 @@
 #ifndef IMAGEACCESS_HPP_
 #define IMAGEACCESS_HPP_
 
-#include "FAST/SmartPointers.hpp"
+
 #include "FAST/Data/DataTypes.hpp"
 
 namespace fast {
@@ -21,10 +21,10 @@ class FAST_EXPORT  ImageAccess {
         void setVector(VectorXi position, Vector4f value);
         void release();
         ~ImageAccess();
-		typedef UniquePointer<ImageAccess> pointer;
+		typedef std::unique_ptr<ImageAccess> pointer;
     private:
-		ImageAccess(const ImageAccess::pointer other);
-		ImageAccess::pointer operator=(const ImageAccess::pointer other);
+		ImageAccess(const ImageAccess::pointer other) = delete;
+		ImageAccess::pointer operator=(const ImageAccess::pointer other) = delete;
         void* mData;
 
         SharedPointer<Image> mImage;

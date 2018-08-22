@@ -2,7 +2,6 @@
 #define OPENCL_PROGRAM_HPP_
 
 #include "Object.hpp"
-#include "SmartPointers.hpp"
 #include <unordered_map>
 
 namespace cl {

@@ -33,11 +33,11 @@ TEST_CASE("Write 2D image with the ImageExporter", "[fast][ImageExporter]") {
 
     unsigned int width = 32;
     unsigned int height = 46;
-    unsigned int components = 1;
+    unsigned int channels = 1;
     DataType type = TYPE_UINT8;
 
     Image::pointer image = Image::New();
-    image->create(width,height,type,components);
+    image->create(width,height,type,channels);
 
     ImageExporter::pointer exporter = ImageExporter::New();
     exporter->setFilename("ImageExporterTest.jpg");
@@ -48,7 +48,7 @@ TEST_CASE("Write 2D image with the ImageExporter", "[fast][ImageExporter]") {
     importer->setFilename("ImageExporterTest.jpg");
     auto port = importer->getOutputPort();
     importer->update(0);
-    Image::pointer image2 = port->getNextFrame();
+    Image::pointer image2 = port->getNextFrame<Image>();
 
     CHECK(width == image2->getWidth());
     CHECK(height == image2->getHeight());

@@ -22,9 +22,10 @@ void ImageMultiply::execute() {
         throw Exception("Size of both input images to ImageMultiply must be equal", __LINE__, __FILE__);
 
     output->createFromImage(input1);
+    SceneGraph::setParentNode(output, input1);
     Vector3ui size = input1->getSize();
 
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::CommandQueue queue = device->getCommandQueue();
 
     std::string buildOptions = "-DDATA_TYPE=" + getCTypeAsString(output->getDataType());
@@ -37,7 +38,7 @@ void ImageMultiply::execute() {
     kernel.setArg(0, *access1->get3DImage());
     kernel.setArg(1, *access2->get3DImage());
     kernel.setArg(2, *access3->get());
-    kernel.setArg(3, output->getNrOfComponents());
+    kernel.setArg(3, output->getNrOfChannels());
 
     queue.enqueueNDRangeKernel(
             kernel,

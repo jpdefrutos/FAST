@@ -6,7 +6,6 @@
 #include <QToolBox>
 #include <unordered_map>
 #include <unordered_set>
-#include <FAST/SmartPointers.hpp>
 #include <FAST/ProcessObject.hpp>
 
 namespace fast {

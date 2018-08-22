@@ -19,7 +19,8 @@ class FAST_EXPORT DataPort {
 
         void addFrame(DataObject::pointer data);
 
-        DataObject::pointer getNextFrame();
+        template <class T = DataObject>
+        SharedPointer<T> getNextFrame();
 
         void setTimestep(uint64_t timestep);
 
@@ -67,13 +68,29 @@ class FAST_EXPORT DataPort {
          * Used to define buffer size for the producer consumer model used in streaming mode PROCESS_ALL_FRAMES
          */
         uint mMaximumNumberOfFrames;
-        UniquePointer<LightweightSemaphore> mFillCount;
-        UniquePointer<LightweightSemaphore> mEmptyCount;
+        std::unique_ptr<LightweightSemaphore> mFillCount;
+        std::unique_ptr<LightweightSemaphore> mEmptyCount;
+
+        DataObject::pointer getNextDataFrame();
 
         bool mIsStaticData = false;
         bool mStop = false;
         bool mGetCalled = false;
 };
+
+// Template specialization when T = DataObject
+template <>
+FAST_EXPORT SharedPointer<DataObject> DataPort::getNextFrame<DataObject>();
+
+template <class T>
+SharedPointer<T> DataPort::getNextFrame() {
+    auto data = getNextDataFrame();
+    auto convertedData = std::dynamic_pointer_cast<T>(data);
+    // Check if the conversion went ok
+    if(!convertedData)
+        throw BadCastException(data->getNameOfClass(), T::getStaticNameOfClass());
+    return convertedData;
+}
 
 }
 

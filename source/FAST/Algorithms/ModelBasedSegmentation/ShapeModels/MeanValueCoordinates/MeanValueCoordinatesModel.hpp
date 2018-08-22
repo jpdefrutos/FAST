@@ -52,8 +52,8 @@ class FAST_EXPORT  MeanValueCoordinatesModel : public ShapeModel {
 		std::unordered_map<uint, std::vector<uint>> mControlVertexTrianglesMap;
 		Vector3f mCentroid;
 
-		UniquePointer<float[]> mNormalizedWeights;
-		UniquePointer<float[]> mNormalizedWeightsPerNode;
+		std::unique_ptr<float[]> mNormalizedWeights;
+		std::unique_ptr<float[]> mNormalizedWeightsPerNode;
 
 		uint mStateSize;
 		MatrixXf mA1;

@@ -265,6 +265,7 @@ void GUI::selectPipeline() {
     }
     mStreamer = ImageFileStreamer::New();
     mStreamer->setFilenameFormats(inputData);
+    mStreamer->setMainDevice(Host::getInstance());
 
     getView(0)->removeAllRenderers();
 
@@ -286,7 +287,7 @@ void GUI::selectPipeline() {
         for(auto renderer : renderers) {
             // A hack for text renderer which needs a reference to the view
             if(renderer->getNameOfClass() == "TextRenderer") {
-                TextRenderer::pointer textRenderer = renderer;
+                TextRenderer::pointer textRenderer = std::dynamic_pointer_cast<TextRenderer>(renderer);
                 textRenderer->setView(getView(0));
             }
             getView(0)->addRenderer(renderer);

@@ -6,7 +6,7 @@
 #include "FAST/Visualization/Window.hpp"
 #include <QApplication>
 #include <QGLFunctions>
-#include <QOpenGLFunctions_2_0>
+#include <QOpenGLFunctions_3_3_Core>
 #endif
 
 
@@ -209,7 +209,7 @@ VertexBufferObjectAccess::pointer Mesh::getVertexBufferObjectAccess(
                     mUseNormalVBO,
                     mUseColorVBO,
                     mUseEBO,
-                    mPtr.lock()
+                    std::static_pointer_cast<Mesh>(mPtr.lock())
             )
     );
 	return std::move(accessObject);
@@ -270,7 +270,8 @@ MeshAccess::pointer Mesh::getMeshAccess(accessType type) {
         }
         if(QGLContext::currentContext() == nullptr)
             Window::getMainGLContext()->makeCurrent();
-        QOpenGLFunctions_2_0* fun = new QOpenGLFunctions_2_0();
+
+        QOpenGLFunctions_3_3_Core *fun = new QOpenGLFunctions_3_3_Core;
         fun->initializeOpenGLFunctions();
 
         mCoordinates.resize(mNrOfVertices*3);
@@ -334,7 +335,7 @@ MeshAccess::pointer Mesh::getMeshAccess(accessType type) {
         mDataIsBeingAccessed = true;
     }
 
-    MeshAccess::pointer accessObject(new MeshAccess(&mCoordinates, &mNormals, &mColors, &mLines, &mTriangles, mPtr.lock()));
+    MeshAccess::pointer accessObject(new MeshAccess(&mCoordinates, &mNormals, &mColors, &mLines, &mTriangles, std::static_pointer_cast<Mesh>(mPtr.lock())));
 	return std::move(accessObject);
 }
 
@@ -432,7 +433,7 @@ MeshOpenCLAccess::pointer Mesh::getOpenCLAccess(accessType type, OpenCLDevice::p
         mDataIsBeingAccessed = true;
     }
 
-    MeshOpenCLAccess::pointer accessObject(new MeshOpenCLAccess(mCoordinatesBuffers[device], mLinesBuffers[device], mTrianglesBuffers[device], mPtr.lock()));
+    MeshOpenCLAccess::pointer accessObject(new MeshOpenCLAccess(mCoordinatesBuffers[device], mLinesBuffers[device], mTrianglesBuffers[device], std::static_pointer_cast<Mesh>(mPtr.lock())));
 	return std::move(accessObject);
 }
 
@@ -520,7 +521,7 @@ void Mesh::free(ExecutionDevice::pointer device) {
         mTriangles.clear();
         mHostHasData = false;
     } else {
-        OpenCLDevice::pointer clDevice = device;
+        OpenCLDevice::pointer clDevice = std::static_pointer_cast<OpenCLDevice>(device);
         if(mCLBuffersIsUpToDate.count(clDevice) > 0) {
             mCLBuffersIsUpToDate.erase(clDevice);
             if(mLinesBuffers.count(clDevice) > 0)
@@ -535,11 +536,16 @@ void Mesh::free(ExecutionDevice::pointer device) {
     }
 }
 
-int Mesh::getNrOfTriangles() const {
+int Mesh::getNrOfTriangles() {
+    if(mHostHasData && mHostDataIsUpToDate)
+        mNrOfTriangles = mTriangles.size() / 3;
     return mNrOfTriangles;
 }
 
-int Mesh::getNrOfVertices() const {
+int Mesh::getNrOfVertices() {
+    if(mHostHasData && mHostDataIsUpToDate)
+        mNrOfVertices = mCoordinates.size() / 3;
+
     return mNrOfVertices;
 }
 
@@ -547,7 +553,9 @@ void Mesh::setBoundingBox(BoundingBox box) {
     mBoundingBox = box;
 }
 
-int Mesh::getNrOfLines() const {
+int Mesh::getNrOfLines() {
+    if(mHostHasData && mHostDataIsUpToDate)
+        mNrOfLines = mLines.size() / 2;
 	return mNrOfLines;
 }
 

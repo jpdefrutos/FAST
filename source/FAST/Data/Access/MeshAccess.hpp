@@ -4,7 +4,7 @@
 #include <vector>
 #include <FAST/Data/DataTypes.hpp>
 #include "FAST/Data/MeshVertex.hpp"
-#include "FAST/SmartPointers.hpp"
+
 
 namespace fast {
 
@@ -34,7 +34,7 @@ class FAST_EXPORT  MeshAccess {
         std::vector<MeshVertex> getVertices();
         void release();
         ~MeshAccess();
-		typedef UniquePointer<MeshAccess> pointer;
+		typedef std::unique_ptr<MeshAccess> pointer;
     private:
 		std::vector<float>* mCoordinates;
 		std::vector<float>* mNormals;

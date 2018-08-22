@@ -72,7 +72,7 @@ void EulerGradientVectorFlow::set32bitStorageFormat() {
 }
 
 void EulerGradientVectorFlow::execute2DGVF(Image::pointer input, Image::pointer output, uint iterations) {
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::Program program = getOpenCLProgram(device);
 
     cl::Context context = device->getContext();
@@ -186,7 +186,7 @@ void EulerGradientVectorFlow::execute2DGVF(Image::pointer input, Image::pointer 
 }
 
 void EulerGradientVectorFlow::execute3DGVF(Image::pointer input, Image::pointer output, uint iterations) {
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::Program program = getOpenCLProgram(device);
 
     cl::Context context = device->getContext();
@@ -286,7 +286,7 @@ void EulerGradientVectorFlow::execute3DGVF(Image::pointer input, Image::pointer 
 }
 
 void EulerGradientVectorFlow::execute3DGVFNo3DWrite(Image::pointer input, Image::pointer output, uint iterations) {
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 
     cl::Context context = device->getContext();
     cl::CommandQueue queue = device->getCommandQueue();
@@ -401,10 +401,10 @@ void EulerGradientVectorFlow::execute3DGVFNo3DWrite(Image::pointer input, Image:
 
 void EulerGradientVectorFlow::execute() {
     Image::pointer input = getInputData<Image>();
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 
-    if((input->getDimensions() == 2 && input->getNrOfComponents() != 2) ||
-            (input->getDimensions() == 3 && input->getNrOfComponents() != 3)) {
+    if((input->getDimensions() == 2 && input->getNrOfChannels() != 2) ||
+            (input->getDimensions() == 3 && input->getNrOfChannels() != 3)) {
         throw Exception("Input to EulerGradientVectorFlow must be a vector field. Nr of components > 1.");
     }
 
@@ -415,7 +415,7 @@ void EulerGradientVectorFlow::execute() {
 
     // Create output, currently only type float is output, not normalized 16 bit
     Image::pointer output = getOutputData<Image>();
-    output->create(input->getSize(), TYPE_FLOAT, input->getNrOfComponents());
+    output->create(input->getSize(), TYPE_FLOAT, input->getNrOfChannels());
     output->setSpacing(input->getSpacing());
     SceneGraph::setParentNode(output, input);
 

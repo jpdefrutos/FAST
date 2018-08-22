@@ -1,7 +1,7 @@
 #ifndef MANUAL_IMAGE_STREAMER_HPP
 #define MANUAL_IMAGE_STREAMER_HPP
 
-#include "FAST/SmartPointers.hpp"
+
 #include "FAST/Streamers/Streamer.hpp"
 #include "FAST/ProcessObject.hpp"
 #include <thread>
@@ -14,6 +14,7 @@ class FAST_EXPORT  ManualImageStreamer : public Streamer {
     FAST_OBJECT(ManualImageStreamer)
     public:
     	void addImage(SharedPointer<Image> image);
+        void addSequence(std::vector<SharedPointer<Image>> images);
         void setStartNumber(uint startNumber);
         void setStepSize(uint step);
         void setZeroFilling(uint digits);
@@ -33,6 +34,8 @@ class FAST_EXPORT  ManualImageStreamer : public Streamer {
          */
         void producerStream();
 
+        void stop();
+
         ~ManualImageStreamer();
     private:
         ManualImageStreamer();
@@ -49,16 +52,18 @@ class FAST_EXPORT  ManualImageStreamer : public Streamer {
         bool mMaximumNrOfFramesSet;
         uint mSleepTime;
         uint mStepSize;
+        bool mStop;
 
-        std::thread *thread;
+        std::thread *mThread;
         std::mutex mFirstFrameMutex;
+        std::mutex mStopMutex;
         std::condition_variable mFirstFrameCondition;
 
         bool mStreamIsStarted;
         bool mFirstFrameIsInserted;
         bool mHasReachedEnd;
 
-        std::vector<SharedPointer<Image> > mImages;
+        std::vector<std::vector<SharedPointer<Image>>> mImages;
 };
 
 } // end namespace fast

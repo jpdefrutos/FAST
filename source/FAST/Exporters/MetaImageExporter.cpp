@@ -90,7 +90,7 @@ void MetaImageExporter::execute() {
             input->getHeight() << " " << input->getDepth() << "\n";
     }
     mhdFile << "BinaryData = True\n";
-    mhdFile << "ElementNumberOfChannels = " << input->getNrOfComponents() << "\n";
+    mhdFile << "ElementNumberOfChannels = " << input->getNrOfChannels() << "\n";
     mhdFile << "ElementSpacing = " << input->getSpacing()[0] << " " << input->getSpacing()[1];
     if(input->getDimensions() == 3)
         mhdFile << " " << input->getSpacing()[2];
@@ -104,6 +104,7 @@ void MetaImageExporter::execute() {
         mhdFile << " " << T->getTransform().matrix()(j,i);
     }}
     mhdFile << "\n";
+    mhdFile << "Timestamp = " << std::to_string(input->getCreationTimestamp()) << "\n";
 
     // Save to raw file
     // set rawFilename, by removing the end .mhd from mFilename and add .raw
@@ -113,7 +114,7 @@ void MetaImageExporter::execute() {
     }
     std::string rawFilename = mFilename.substr(0,mFilename.length()-4) + extension;
     const unsigned int numberOfElements = input->getWidth()*input->getHeight()*
-            input->getDepth()*input->getNrOfComponents();
+            input->getDepth()*input->getNrOfChannels();
 
     ImageAccess::pointer access = input->getImageAccess(ACCESS_READ);
     void* data = access->get();
@@ -146,7 +147,11 @@ void MetaImageExporter::execute() {
         mhdFile << "CompressedDataSize = " << compressedSize << "\n";
     }
 
-    for(auto&& item : mMetaData) {
+    // Add metadata
+    for(auto&& item : mMetadata) {
+        mhdFile << item.first << " = " << item.second << "\n";
+    }
+    for(auto&& item : input->getMetadata()) {
         mhdFile << item.first << " = " << item.second << "\n";
     }
 
@@ -172,8 +177,8 @@ void MetaImageExporter::disableCompression() {
     mIsModified = true;
 }
 
-void MetaImageExporter::setMetaData(std::string key, std::string value) {
-    mMetaData[key] = value;
+void MetaImageExporter::setMetadata(std::string key, std::string value) {
+    mMetadata[key] = value;
 }
 
 

@@ -22,7 +22,6 @@ GUI::GUI() {
     mStop = false;
     mPort = 18944;
     mThread = nullptr;
-    mFPS = 10;
     setTitle("FAST - OpenIGTLink Server");
 
     QVBoxLayout* layout = new QVBoxLayout(mWidget);
@@ -167,7 +166,7 @@ static igtl::ImageMessage::Pointer createIGTLImageMessage(Image::pointer image) 
     float spacing[3]  = {image->getSpacing().x(), image->getSpacing().y(), image->getSpacing().z()};     // spacing (mm/pixel)
     int   svoffset[3] = {0, 0, 0};           // sub-volume offset
     int   scalarType;
-    size_t totalSize = image->getWidth()*image->getHeight()*image->getDepth()*image->getNrOfComponents();
+    size_t totalSize = image->getWidth()*image->getHeight()*image->getDepth()*image->getNrOfChannels();
     switch(image->getDataType()) {
         case TYPE_UINT8:
             scalarType = igtl::ImageMessage::TYPE_UINT8;
@@ -196,7 +195,7 @@ static igtl::ImageMessage::Pointer createIGTLImageMessage(Image::pointer image) 
     igtl::ImageMessage::Pointer imgMsg = igtl::ImageMessage::New();
     imgMsg->SetDimensions(size);
     imgMsg->SetSpacing(spacing);
-    imgMsg->SetNumComponents(image->getNrOfComponents());
+    imgMsg->SetNumComponents(image->getNrOfChannels());
     imgMsg->SetScalarType(scalarType);
     imgMsg->SetDeviceName("DummyImage");
     imgMsg->SetSubVolume(size, svoffset);
@@ -222,7 +221,6 @@ void GUI::streamData() {
     setMainGLContext(mainGLContext);
 	mainGLContext->makeCurrent();
 
-    std::chrono::duration<int, std::milli> interaval(1000 / mFPS);
     reportInfo() << "Listening for new connections on port " << mPort << reportEnd();
     try {
         while(true) {
@@ -248,7 +246,7 @@ void GUI::streamData() {
 
                     // Stream images
                     dataStreamer->update(framesSent, STREAMING_MODE_PROCESS_ALL_FRAMES);
-                    Image::pointer image = dataStream->getNextFrame();
+                    Image::pointer image = dataStream->getNextFrame<Image>();
 
                     // Create a new IMAGE type message
                     igtl::ImageMessage::Pointer imgMsg = createIGTLImageMessage(image);
@@ -261,7 +259,10 @@ void GUI::streamData() {
                         break;
                     }
 
-                    std::this_thread::sleep_for(interaval);
+                    if(mFPS > 0) {
+                        std::chrono::duration<int, std::milli> interval(1000 / mFPS);
+                        std::this_thread::sleep_for(interval);
+                    }
                     framesSent++;
                 }
             }
@@ -280,6 +281,10 @@ void GUI::streamData() {
     reportInfo() << "Closing server socket" << reportEnd();
     mStatus->setText("Current status: Server not running");
     mServerSocket->CloseSocket();
+}
+
+void GUI::setFramesPerSecond(uint fps) {
+    mFPS = fps;
 }
 
 }

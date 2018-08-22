@@ -22,6 +22,10 @@ fast_add_sources(
     Camera.cpp
     Camera.hpp
     SimpleDataObject.hpp
+    Tensor.cpp
+    Tensor.hpp
+    TensorShape.cpp
+    TensorShape.hpp
 )
 fast_add_test_sources(
     Tests/DataObjectTests.cpp

@@ -1,6 +1,10 @@
-﻿cmake_minimum_required(VERSION 2.8.11)
+﻿cmake_minimum_required(VERSION 3.1)
 
 project(FAST)
+
+set(VERSION_MAJOR 2)
+set(VERSION_MINOR 0)
+set(VERSION_PATCH 0)
 
 # set policies explicitly to avoid warnings.
 # Read more on CMP0022 here: https://cmake.org/cmake/help/v3.0/policy/CMP0022.html
@@ -76,6 +80,7 @@ set(QT_HEADERS
         source/FAST/Visualization/ComputationThread.hpp
         source/FAST/Examples/Interoperability/qtInteroperability.hpp
         source/FAST/PipelineEditor.hpp
+        source/FAST/Streamers/MovieStreamer.hpp
 )
 
 # Set debug define if debug mode is set
@@ -87,8 +92,11 @@ endif()
 # Set FAST include dirs
 set(FAST_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/source/ ${CMAKE_CURRENT_BINARY_DIR})
 
-# Some extra build settings (C++11 and OpenMP)
-include(cmake/Cpp11.cmake)
+# Some extra build settings (C++14 and OpenMP)
+set(CMAKE_CXX_STANDARD 14)
+if(CMAKE_COMPILER_IS_GNUCXX)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations") # Remove deprecated warnings GCC
+endif()
 include(cmake/OpenMP.cmake)
 
 # This will setup all of FAST's depedencies

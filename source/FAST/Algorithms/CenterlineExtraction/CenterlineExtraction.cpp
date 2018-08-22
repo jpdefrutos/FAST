@@ -5,7 +5,7 @@
 #include <unordered_set>
 #include <stack>
 #include "FAST/Exporters/MetaImageExporter.hpp"
-#include "FAST/SmartPointers.hpp"
+
 
 namespace fast {
 
@@ -17,7 +17,7 @@ CenterlineExtraction::CenterlineExtraction() {
 }
 
 Image::pointer CenterlineExtraction::calculateDistanceTransform(Image::pointer input) {
-	OpenCLDevice::pointer device = getMainDevice();
+	OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 	cl::Program program = getOpenCLProgram(device);
 	cl::CommandQueue queue = device->getCommandQueue();
 	const int width = input->getWidth();
@@ -168,7 +168,7 @@ inline Vector3i position3D(int pos, Vector3i size) {
 	return Vector3i(x,y,z);
 }
 
-inline double solveQuadratic(const UniquePointer<double[]>& G, const UniquePointer<double[]>& speed, Vector3i pos, Vector3i size) {
+inline double solveQuadratic(const std::vector<double>& G, const std::unique_ptr<double[]>& speed, Vector3i pos, Vector3i size) {
 
 	std::vector<double> abc = {
             std::min(G[linearPosition(pos + Vector3i(1,0,0), size)], G[linearPosition(pos - Vector3i(1,0,0), size)]),
@@ -214,7 +214,7 @@ inline double solveQuadratic(const UniquePointer<double[]>& G, const UniquePoint
 	}
 }
 
-inline void growFromPointsAdded(std::vector<Vector3i> points, const UniquePointer<double[]>& G, std::unordered_set<int>& Sc, std::unordered_set<int>& processed, Vector3i size) {
+inline void growFromPointsAdded(const std::vector<Vector3i>& points, const std::vector<double>& G, std::unordered_set<int>& Sc, std::unordered_set<int>& processed, Vector3i size) {
 
 	std::stack<Vector3i> stack;
 	stack.push(points[0]);
@@ -273,7 +273,7 @@ void CenterlineExtraction::execute() {
 	candidateCenterpointsImage->create(size.cast<uint>(), TYPE_UINT8, 1);
 
 	{
-        OpenCLDevice::pointer device = getMainDevice();
+        OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
         cl::Program program = getOpenCLProgram(device);
         cl::CommandQueue queue = device->getCommandQueue();
         OpenCLImageAccess::pointer distanceAccess = distance->getOpenCLImageAccess(ACCESS_READ, device);
@@ -314,7 +314,7 @@ void CenterlineExtraction::execute() {
 	uchar* candidateArray = (uchar*)candidateAccess->get();
 	int maxDistance = 0;
 	int maxIndex = 0;
-	UniquePointer<bool[]> isInL(new bool[totalSize]);
+	std::vector<bool> isInL(totalSize, true);
 	std::unordered_set<int> Sc;
 	for(int i = 0; i < totalSize; ++i) {
 		if(inputArray[i] == 1) {
@@ -330,8 +330,6 @@ void CenterlineExtraction::execute() {
                 }
                 Sc.insert(i);
             }
-		} else {
-			isInL[i] = true;
 		}
 	}
 	Vector3i maxPosition = position3D(maxIndex, size);
@@ -339,11 +337,10 @@ void CenterlineExtraction::execute() {
 
 	// Calculate speed term
 	double beta = 1.0 / (0.02*maxDistance);
-	UniquePointer<double[]> speed(new double[totalSize]);
-	UniquePointer<double[]> G(new double[totalSize]);
+	auto speed = std::make_unique<double[]>(totalSize);
+	std::vector<double> G(totalSize, std::numeric_limits<double>::infinity());
 	for(int i = 0; i < totalSize; ++i) {
 		speed[i] = exp(beta*distanceArray[i]);
-		G[i] = std::numeric_limits<double>::infinity();
 	}
 
 	G[linearPosition(maxPosition, size)] = 0;

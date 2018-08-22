@@ -33,7 +33,7 @@ public:
     void release();
     ~DataAccess();
 
-    typedef UniquePointer<DataAccess<DataType> > pointer;
+    typedef std::unique_ptr<DataAccess<DataType> > pointer;
 protected:
     DataType* mData;
     SharedPointer<SimpleDataObject<DataType> > mDataObject;
@@ -85,6 +85,7 @@ protected:
 private:
     // AccessObject needs to be friends with SimpleDataObject, so that it can reach the accessFinished method
     friend AccessObject;
+
 };
 
 
@@ -123,7 +124,7 @@ typename AccessObject::pointer SimpleDataObject<DataType, AccessObject>::getAcce
         mDataIsBeingAccessed = true;
     }
 
-    typename AccessObject::pointer accessObject(new AccessObject(&mData, mPtr.lock()));
+    typename AccessObject::pointer accessObject(new AccessObject(&mData, std::static_pointer_cast<SimpleDataObject<DataType>>(mPtr.lock())));
     return std::move(accessObject);
 }
 

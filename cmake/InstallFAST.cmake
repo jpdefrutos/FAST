@@ -1,9 +1,16 @@
 # This will install FAST binaries, libraries and necessary include files to the path given by CMAKE_INSTALL_PREFIX
 
 # Install FAST library
+if(WIN32)
+# DLL should be in binary folder
+install(TARGETS FAST
+	DESTINATION fast/bin
+)
+else()
 install(TARGETS FAST
 	DESTINATION fast/lib
 )
+endif()
 
 if(FAST_BUILD_TESTS)
     # Install test executable
@@ -22,6 +29,10 @@ if(WIN32)
 	file(GLOB DLLs ${PROJECT_BINARY_DIR}/bin/*.dll)
 	install(FILES ${DLLs}
 		DESTINATION fast/bin
+	)
+	file(GLOB DLLs ${PROJECT_BINARY_DIR}/lib/*.lib)
+	install(FILES ${DLLs}
+		DESTINATION fast/lib
 	)
 elseif(APPLE)
 	file(GLOB SOs ${PROJECT_BINARY_DIR}/lib/*.dylib)
@@ -183,12 +194,14 @@ install(FILES ${FAST_EXTERNAL_BUILD_DIR}/zlib/src/zlib/README
 install(FILES ${FAST_EXTERNAL_BUILD_DIR}/OpenIGTLink/src/OpenIGTLink/LICENSE.txt
 		DESTINATION fast/licenses/OpenIGTLink/
 )
-
+# DCMTK
+install(FILES ${FAST_EXTERNAL_BUILD_DIR}/dcmtk/src/dcmtk/COPYRIGHT
+		DESTINATION fast/licenses/dcmtk/
+)
 # NumPy (numpy.i file)
 install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/NumPy_LICENSE.txt
 		DESTINATION fast/licenses/numpy/
 )
-
 # Semaphore implementation
 install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/Semaphore_LICENSE.txt
 		DESTINATION fast/licenses/semaphore/

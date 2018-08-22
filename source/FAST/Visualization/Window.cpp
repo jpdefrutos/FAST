@@ -260,7 +260,7 @@ void Window::startComputationThread() {
         mThread->moveToThread(thread);
         connect(thread, SIGNAL(started()), mThread, SLOT(run()));
         connect(mThread, SIGNAL(finished()), thread, SLOT(quit()));
-        //connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+        connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
 
         for(int i = 0; i < getViews().size(); i++)
             mThread->addView(getViews()[i]);
@@ -322,6 +322,14 @@ int Window::getScreenWidth() const {
 int Window::getScreenHeight() const {
     QDesktopWidget *desktop = QApplication::desktop();
     return desktop->height();
+}
+
+void Window::saveScreenshotOnClose(std::string filename) {
+    mWidget->saveScreenshotOnClose(filename);
+}
+
+void Window::saveScreenshotOfViewsOnClose(std::string filename) {
+    mWidget->saveScreenshotOfViewsOnClose(filename);
 }
 
 } // end namespace fast

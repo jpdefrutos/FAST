@@ -51,7 +51,6 @@ class FAST_EXPORT  ComputationThread : public QObject, public Object {
         void timestepIncreased();
     private:
 
-        bool mUpdateThreadIsStopped;
         bool mIsRunning;
         std::condition_variable mUpdateThreadConditionVariable;
         std::mutex mUpdateThreadMutex;
@@ -64,6 +63,7 @@ class FAST_EXPORT  ComputationThread : public QObject, public Object {
         uint64_t mTimestepLimit = 0;
         bool mPaused = false;
         bool mLoop = false;
+        bool mStop = false;
         StreamingMode mStreamingMode;
 };
 

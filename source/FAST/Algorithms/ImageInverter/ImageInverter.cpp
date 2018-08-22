@@ -20,7 +20,7 @@ void ImageInverter::execute() {
     output->createFromImage(input);
     Vector3ui size = input->getSize();
 
-    OpenCLDevice::pointer device = getMainDevice();
+    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::CommandQueue queue = device->getCommandQueue();
 
     std::string buildOptions = "-DDATA_TYPE=" + getCTypeAsString(output->getDataType());
@@ -33,7 +33,7 @@ void ImageInverter::execute() {
     kernel.setArg(1, *access2->get());
     kernel.setArg(2, min);
     kernel.setArg(3, max);
-    kernel.setArg(4, output->getNrOfComponents());
+    kernel.setArg(4, output->getNrOfChannels());
 
     queue.enqueueNDRangeKernel(
             kernel,

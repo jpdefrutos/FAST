@@ -3,7 +3,8 @@
 
 #include "CL/OpenCL.hpp"
 #include "Access.hpp"
-#include "FAST/SmartPointers.hpp"
+#include "FAST/Object.hpp"
+
 
 namespace fast {
 
@@ -19,7 +20,7 @@ class FAST_EXPORT  OpenCLImageAccess {
         OpenCLImageAccess(cl::Image3D* image, SharedPointer<Image> object);
         void release();
         ~OpenCLImageAccess();
-		typedef UniquePointer<OpenCLImageAccess> pointer;
+		typedef std::unique_ptr<OpenCLImageAccess> pointer;
     private:
 		OpenCLImageAccess(const OpenCLImageAccess& other);
 		OpenCLImageAccess& operator=(const OpenCLImageAccess& other);

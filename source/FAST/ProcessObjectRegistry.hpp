@@ -6,7 +6,7 @@
 #include <functional>
 #include "FAST/ProcessObject.hpp"
 #include "FAST/Exception.hpp"
-#include "FAST/SmartPointers.hpp"
+
 
 namespace fast {
 

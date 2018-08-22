@@ -33,12 +33,9 @@
 using namespace fast;
 
 void View::addRenderer(Renderer::pointer renderer) {
-	bool thisIsAVolumeRenderer = true;
-	try {
-		VolumeRenderer::pointer vRenderer = renderer;
-	} catch(Exception &e) {
-		thisIsAVolumeRenderer = false;
-	}
+    // Can renderer be casted to volume renderer test:
+    auto test = std::dynamic_pointer_cast<VolumeRenderer>(renderer);
+	bool thisIsAVolumeRenderer = (bool)test;
 
 	if(thisIsAVolumeRenderer)
 		mVolumeRenderers.push_back(renderer);
@@ -58,7 +55,7 @@ void View::setBackgroundColor(Color color) {
 QGLFormat View::getGLFormat() {
     QGLFormat qglFormat = QGLFormat::defaultFormat();
     qglFormat.setVersion(3,3);
-    qglFormat.setProfile(QGLFormat::CompatibilityProfile); // Triangle renderer will not work with core profile for some reason, must be using some legacy GL stuff
+    qglFormat.setProfile(QGLFormat::CoreProfile);
     return qglFormat;
 }
 
@@ -166,25 +163,13 @@ void View::execute() {
 
 void View::updateRenderersInput(uint64_t timestep, StreamingMode mode) {
     for(Renderer::pointer renderer : mNonVolumeRenderers) {
-        int i = 0;
-        while(true) {
-            try {
-                renderer->getInputPort(i)->getProcessObject()->update(timestep, mode);
-                i++;
-            } catch(...) {
-                break;
-            }
+        for(int i = 0; i < renderer->getNrOfInputConnections(); ++i) {
+            renderer->getInputPort(i)->getProcessObject()->update(timestep, mode);
         }
     }
     for(Renderer::pointer renderer : mVolumeRenderers) {
-        int i = 0;
-        while(true) {
-            try {
-                renderer->getInputPort(i)->getProcessObject()->update(timestep, mode);
-                i++;
-            } catch(...) {
-                break;
-            }
+        for(int i = 0; i < renderer->getNrOfInputConnections(); ++i) {
+            renderer->getInputPort(i)->getProcessObject()->update(timestep, mode);
         }
     }
 }
@@ -227,7 +212,7 @@ void View::unlockRenderers() {
 
 void View::getMinMaxFromBoundingBoxes(bool transform, Vector3f& min, Vector3f& max) {
     // Get bounding boxes of all objects
-    BoundingBox box = mNonVolumeRenderers[0]->getBoundingBox(transform);
+    BoundingBox box = mNonVolumeRenderers.at(0)->getBoundingBox(transform);
     Vector3f corner = box.getCorners().row(0);
     min[0] = corner[0];
     max[0] = corner[0];
@@ -238,7 +223,7 @@ void View::getMinMaxFromBoundingBoxes(bool transform, Vector3f& min, Vector3f& m
     for (int i = 0; i < mNonVolumeRenderers.size(); i++) {
         // Apply transformation to all b boxes
         // Get max and min of x and y coordinates of the transformed b boxes
-        BoundingBox box = mNonVolumeRenderers[i]->getBoundingBox(transform);
+        BoundingBox box = mNonVolumeRenderers.at(i)->getBoundingBox(transform);
         MatrixXf corners = box.getCorners();
         //reportInfo() << box << Reporter::end();
         for (int j = 0; j < 8; j++) {
@@ -350,25 +335,26 @@ void View::recalculateCamera() {
         mRight = max[xDirection]*scalingWidth;
         mBottom = min[yDirection]*scalingHeight;
         mTop = max[yDirection]*scalingHeight;
-        mCameraPosition[0] = mLeft + (mRight - mLeft)*0.5f - centroid[0];
-        mCameraPosition[1] = mBottom + (mTop - mBottom)*0.5f - centroid[1];
-        //reportInfo() << "set zFar to " << zFar << Reporter::end();
-        //reportInfo() << "set zNear to " << zNear << Reporter::end();
+
+        mCameraPosition[0] = mLeft + (mRight - mLeft)*0.5f - centroid[0]; // center camera
+        mCameraPosition[1] = mBottom + (mTop - mBottom)*0.5f - centroid[1]; // center camera
+        mCameraPosition[1] = mCameraPosition[1] - 2.0f*(mBottom + (mTop - mBottom)*0.5f); // Compensate for Y flipping
+
         m3DViewingTransformation = Affine3f::Identity();
         //m3DViewingTransformation.pretranslate(-mRotationPoint); // Move to rotation point
         //m3DViewingTransformation.prerotate(Q.toRotationMatrix()); // Rotate
         //m3DViewingTransformation.pretranslate(mRotationPoint); // Move back from rotation point
-        m3DViewingTransformation.pretranslate(mCameraPosition);
+        m3DViewingTransformation.scale(Vector3f(1, -1, 1)); // Flip y
+        m3DViewingTransformation.translate(mCameraPosition);
+        /*
         std::cout << "Centroid: " << centroid.transpose() << std::endl;
         std::cout << "Camera pos: " << mCameraPosition.transpose() << std::endl;
         std::cout << "width and height: " << this->width() << " " << this->height() << std::endl;
-
         std::cout << zNear << " " << zFar << std::endl;
         std::cout << min[xDirection] << " " << max[xDirection] << std::endl;
         std::cout << min[yDirection] << " " << max[yDirection] << std::endl;
-        // TODO the aspect ratio of the viewport and the orhto projection (left, right, bottom, top) has to match.
-
         std::cout << "Ortho params: " << mLeft << " " << mRight << " " << mBottom << " " << mTop << " " << scalingWidth << " " << scalingHeight << " " << zNear << " " << zFar << std::endl;
+         */
         mPerspectiveMatrix = loadOrthographicMatrix(mLeft, mRight, mBottom, mTop, zNear, zFar);
     } else {
         // 3D Mode
@@ -487,7 +473,6 @@ void View::initializeGL() {
     glEnable(GL_TEXTURE_2D);
     // Enable transparency
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     // Update all renderes, so that getBoundingBox works
     for(unsigned int i = 0; i < mNonVolumeRenderers.size(); i++)
         mNonVolumeRenderers[i]->update(0, mStreamingMode);
@@ -574,12 +559,12 @@ void View::renderVolumes()
 		//Update Camera Matrix for VolumeRendere
 		GLfloat modelView[16];
 		glGetFloatv(GL_MODELVIEW_MATRIX, modelView);
-		((VolumeRenderer::pointer)(mVolumeRenderers[0]))->setModelViewMatrix(modelView);
+		std::static_pointer_cast<VolumeRenderer>(mVolumeRenderers[0])->setModelViewMatrix(modelView);
 
 		if (mNonVolumeRenderers.size() > 0)
 		{
-			((VolumeRenderer::pointer)(mVolumeRenderers[0]))->addGeometryColorTexture(renderedTexture0);
-			((VolumeRenderer::pointer)(mVolumeRenderers[0]))->addGeometryDepthTexture(renderedTexture1);
+			std::static_pointer_cast<VolumeRenderer>(mVolumeRenderers[0])->addGeometryColorTexture(renderedTexture0);
+			std::static_pointer_cast<VolumeRenderer>(mVolumeRenderers[0])->addGeometryDepthTexture(renderedTexture1);
 		}
 		
 
