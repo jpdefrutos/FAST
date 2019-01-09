@@ -37,6 +37,12 @@ class FAST_EXPORT RealSenseStreamer : public Streamer {
          * @param range
          */
         void setMinRange(float range);
+
+        void setMaxWidth(float range);
+        void setMinWidth(float range);
+        void setMaxHeight(float range);
+        void setMinHeight(float range);
+
         bool hasReachedEnd();
         uint getNrOfFrames() const;
         /**
@@ -59,6 +65,11 @@ class FAST_EXPORT RealSenseStreamer : public Streamer {
         bool mStop;
         float mMaxRange = std::numeric_limits<float>::max();
         float mMinRange = 0;
+        float mMaxWidth = std::numeric_limits<float>::max();
+        float mMinWidth = -std::numeric_limits<float>::max();
+        float mMaxHeight = std::numeric_limits<float>::max();
+        float mMinHeight = -std::numeric_limits<float>::max();
+
         uint mNrOfFrames;
 
         std::unique_ptr<std::thread> mThread;

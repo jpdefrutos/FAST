@@ -209,8 +209,16 @@ void RealSenseStreamer::producerStream() {
                     float upoint[3];
                     float upixel[2] = {(float)x, (float)y};
                     rs2_deproject_pixel_to_point(upoint, intrinsics, upixel, pixels_distance);
-                    MeshVertex vertex(Vector3f(upoint[0]*1000, upoint[1]*1000, upoint[2]*1000)); // Convert to mm
+                    Vector3f point = Vector3f(upoint[0]*1000, upoint[1]*1000, upoint[2]*1000);
+                    MeshVertex vertex(point); // Convert to mm
                     vertex.setColor(Color(p_other_frame[offset]/255.0f, p_other_frame[offset+1]/255.0f, p_other_frame[offset+2]/255.0f));
+
+                    if(point[0] > mMaxWidth || point[0] < mMinWidth)
+                        continue;
+
+                    if(point[1] > mMaxHeight || point[1] < mMinHeight)
+                        continue;
+
                     points.push_back(vertex);
                 }
             }
@@ -284,5 +292,22 @@ void RealSenseStreamer::setMinRange(float range) {
         throw Exception("Range has to be >= 0");
     mMinRange = range;
 }
+
+void RealSenseStreamer::setMaxWidth(float range) {
+    mMaxWidth = range;
+}
+
+void RealSenseStreamer::setMinWidth(float range) {
+    mMinWidth = range;
+}
+
+void RealSenseStreamer::setMaxHeight(float range) {
+    mMaxHeight = range;
+}
+
+void RealSenseStreamer::setMinHeight(float range) {
+    mMinHeight = range;
+}
+
 
 }
