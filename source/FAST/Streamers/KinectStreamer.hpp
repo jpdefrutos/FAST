@@ -40,6 +40,11 @@ class FAST_EXPORT KinectStreamer : public Streamer {
          * @param range
          */
         void setMinRange(float range);
+        void setSectorWidth(float angle_FOVX, float angle_FOVY);
+
+        void setXLimit(float x_min, float x_max);
+        void setYLimit(float y_min, float y_max);
+
         bool hasReachedEnd();
         uint getNrOfFrames() const;
         /**
@@ -62,6 +67,7 @@ class FAST_EXPORT KinectStreamer : public Streamer {
         bool mStop;
         bool mPointCloudFilterEnabled;
         float mMaxRange = std::numeric_limits<float>::max(), mMinRange = 0;
+        float mMinX = -3, mMinY = -3, mMaxX = 3, mMaxY = 3;
         uint mNrOfFrames;
 
         std::thread* mThread;

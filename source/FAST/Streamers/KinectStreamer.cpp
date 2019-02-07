@@ -192,6 +192,12 @@ void KinectStreamer::producerStream() {
                             continue;
                     }
 
+                    if(x > mMaxX || x < mMinX)
+                        continue;
+
+                    if(y > mMaxY || y < mMinY)
+                        continue;
+
                     // Decode color channels
                     const uint8_t *p = reinterpret_cast<uint8_t*>(&color);
                     uint8_t red = p[0];
@@ -260,6 +266,18 @@ void KinectStreamer::setMinRange(float range) {
     if(range < 0)
         throw Exception("Range has to be >= 0");
     mMinRange = range;
+}
+
+void KinectStreamer::setXLimit(float x_min, float x_max)
+{
+    mMinX = x_min;
+    mMaxX = x_max;
+}
+
+void KinectStreamer::setYLimit(float y_min, float y_max)
+{
+    mMinY = y_min;
+    mMaxY = y_max;
 }
 
 }
