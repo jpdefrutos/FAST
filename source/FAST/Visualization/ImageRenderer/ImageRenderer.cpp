@@ -108,15 +108,13 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
         cl::ImageGL imageGL;
         std::vector<cl::Memory> v;
         GLuint textureID;
-        // TODO The GL-CL interop here is causing glClear to not work on AMD systems and therefore disabled
-        /*
-        if(DeviceManager::isGLInteropEnabled()) {
+        if(DeviceManager::isGLInteropEnabled() && false) {
             // Create OpenGL texture
             glGenTextures(1, &textureID);
             glBindTexture(GL_TEXTURE_2D, textureID);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, 0);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
 
             // Create CL-GL image
             imageGL = cl::ImageGL(
@@ -127,21 +125,19 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
                     textureID
             );
             glBindTexture(GL_TEXTURE_2D, 0);
-            glFinish();
-            mKernel.setArg(1, imageGL);
+            glFinish();     // Make sure everything is ready for CL to take over the texture
             v.push_back(imageGL);
             queue.enqueueAcquireGLObjects(&v);
+            mKernel.setArg(1, imageGL);
         } else {
-         */
-        image = cl::Image2D(
-                device->getContext(),
-                CL_MEM_READ_WRITE,
-                cl::ImageFormat(CL_RGBA, CL_FLOAT),
-                input->getWidth(), input->getHeight()
-        );
-        mKernel.setArg(1, image);
-        //}
-
+            image = cl::Image2D(
+                    device->getContext(),
+                    CL_MEM_READ_WRITE,
+                    cl::ImageFormat(CL_RGBA, CL_FLOAT),
+                    input->getWidth(), input->getHeight()
+            );
+            mKernel.setArg(1, image);
+        }
 
         mKernel.setArg(0, *clImage);
         mKernel.setArg(2, level);
@@ -153,28 +149,29 @@ void ImageRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, boo
                 cl::NullRange
         );
 
-        /*if(DeviceManager::isGLInteropEnabled()) {
+        if(DeviceManager::isGLInteropEnabled() && false) {
             queue.enqueueReleaseGLObjects(&v);
-        } else {*/
-        // Copy data from CL image to CPU
-        auto data = make_uninitialized_unique<float[]>(input->getWidth() * input->getHeight() * 4);
-        queue.enqueueReadImage(
-                image,
-                CL_TRUE,
-                createOrigoRegion(),
-                createRegion(input->getWidth(), input->getHeight(), 1),
-                0, 0,
-                data.get()
-        );
-        // Copy data from CPU to GL texture
-        glGenTextures(1, &textureID);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data.get());
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glFinish();
-        //}
+            queue.finish(); // This is needed, otherwise seg fault can occur when doing GL stuff with this texture
+        } else {
+            // Copy data from CL image to CPU
+            auto data = make_uninitialized_unique<float[]>(input->getWidth() * input->getHeight() * 4);
+            queue.enqueueReadImage(
+                    image,
+                    CL_TRUE,
+                    createOrigoRegion(),
+                    createRegion(input->getWidth(), input->getHeight(), 1),
+                    0, 0,
+                    data.get()
+            );
+            // Copy data from CPU to GL texture
+            glGenTextures(1, &textureID);
+            glBindTexture(GL_TEXTURE_2D, textureID);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, input->getWidth(), input->getHeight(), 0, GL_RGBA, GL_FLOAT, data.get());
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glFinish();
+        }
 
         mTexturesToRender[inputNr] = textureID;
         mImageUsed[inputNr] = input;
