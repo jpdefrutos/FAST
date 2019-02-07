@@ -43,6 +43,16 @@ void View::addRenderer(Renderer::pointer renderer) {
 		mNonVolumeRenderers.push_back(renderer);
 }
 
+void View::removeRenderer(Renderer::pointer renderer){
+    auto test = std::dynamic_pointer_cast<VolumeRenderer>(renderer);
+    bool thisIsAVolumeRenderer = (bool)test;
+
+    if(thisIsAVolumeRenderer)
+        mVolumeRenderers.erase(std::remove(mVolumeRenderers.begin(), mVolumeRenderers.end(), renderer), mVolumeRenderers.end());
+    else
+        mNonVolumeRenderers.erase(std::remove(mNonVolumeRenderers.begin(), mNonVolumeRenderers.end(), renderer), mNonVolumeRenderers.end());
+}
+
 void View::removeAllRenderers() {
     mVolumeRenderers.clear();
     mNonVolumeRenderers.clear();
@@ -493,8 +503,7 @@ void View::initializeGL() {
         }
         mPerspectiveMatrix = loadPerspectiveMatrix(fieldOfViewY, aspect, zNear, zFar);
     }
-
-	reportInfo() << "Finished initializing OpenGL" << Reporter::end();
+    reportInfo() << "Finished initializing OpenGL" << Reporter::end();
 
 }
 
