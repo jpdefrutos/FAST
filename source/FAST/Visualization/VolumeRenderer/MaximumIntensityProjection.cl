@@ -1,6 +1,17 @@
-
-const sampler_t transferFuncSampler = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
 const sampler_t volumeSampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
+
+float getPixelAsFloat(__read_only image3d_t image, sampler_t sampler, float4 pos) {
+    float value;
+    int dataType = get_image_channel_data_type(image);
+    if(dataType == CLK_FLOAT) {
+        value = read_imagef(image, sampler, pos).x;
+    } else if(dataType == CLK_UNSIGNED_INT8 || dataType == CLK_UNSIGNED_INT16) {
+        value = read_imageui(image, sampler, pos).x;
+    } else {
+        value = read_imagei(image, sampler, pos).x;
+    }
+    return value;
+}
 
 // intersect ray with a box
 // http://www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
@@ -44,7 +55,11 @@ __kernel void volumeRender(
     __constant float* invViewMatrix,
     __constant float* modelMatrix,
     __read_only image2d_t inputFramebuffer,
-    __read_only image2d_t inputDepthFramebuffer
+    __read_only image2d_t inputDepthFramebuffer,
+    __private float minimum,
+    __private float maximum,
+    __private float zNear,
+    __private float zFar
     ) {
 
     const int width = get_image_width(framebuffer);
@@ -97,8 +112,6 @@ __kernel void volumeRender(
     temp = (float4)(0.0f, 0.0f, 0.0f, 1.0f);
     // Recover original depth from depth buffer: https://stackoverflow.com/questions/6652253/getting-the-true-z-value-from-the-depth-buffer
     float depthBuffer = (read_imagef(inputDepthFramebuffer, volumeSampler, (int2)(x,y)).x*2.0f - 1.0f); // turn depth into normalized coordinate ([-1, 1]
-    float zFar = 2466.85f;   // TODO get as input
-    float zNear = 0.1f;      // TODO get as input
     depthBuffer = 2.0f * zNear * zFar / (zFar + zNear - depthBuffer * (zFar - zNear));
     int distance = min(tfar, depthBuffer); // Start at tfar or the value of the depth buffer, whatever is smallest
     if(distance > tnear) {
@@ -106,7 +119,7 @@ __kernel void volumeRender(
             float4 pos = rayOrigin + rayDirection * distance;
 
             // read from 3D texture
-            float sample = clamp(0.0f, 1.0f, ((float) read_imagei(volume, volumeSampler, pos).x + 1024.0f) / 4000.0f);
+            float sample = (getPixelAsFloat(volume, volumeSampler, pos) - minimum) / (maximum - minimum);
 
             //sample = 1.0f - sample;
             temp = max(temp, (float4)(sample, sample, sample, 1));
@@ -114,37 +127,8 @@ __kernel void volumeRender(
             distance -= 1;
         }
 
-        /*
-        // Calculate normal at targetDistance
-        float4 pos = rayOrigin + rayDirection * targetDistance;
-        float3 normal;
-        normal.x = 0.5f*(read_imagei(volume, volumeSampler, pos + (float4)(2,0,0,0)).x - read_imagei(volume, volumeSampler, pos - (float4)(2,0,0,0)).x);
-        normal.y = 0.5f*(read_imagei(volume, volumeSampler, pos + (float4)(0,2,0,0)).x - read_imagei(volume, volumeSampler, pos - (float4)(0,2,0,0)).x);
-        normal.z = 0.5f*(read_imagei(volume, volumeSampler, pos + (float4)(0,0,2,0)).x - read_imagei(volume, volumeSampler, pos - (float4)(0,0,2,0)).x);
-        normal = normalize(normal);
-
-        // Calculate color with light
-        float3 lightColor = {0.7, 0.7, 0.7};
-        float3 ambientColor = {0.2, 0.2, 0.2};
-        float3 specularColor = {1, 1, 1};
-        float3 LightPos = {0,0,0};
-        float3 ViewPos = {0,0,0};
-        float shininess = 16.0f;
-
-        float3 lightDir = normalize(LightPos - pos.xyz);
-        float3 diff = fabs(dot(normal, lightDir));
-        float3 diffuse = lightColor * (diff * temp.xyz);
-        float3 viewDir = normalize(ViewPos - pos.xyz);
-        float3 reflectDir = reflect(-lightDir, normal);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0f), shininess);
-        float3 specular = lightColor * (spec * specularColor);
-        float3 ambient = lightColor * ambientColor;
-        float3 result = ambient + diffuse;// + specular;
-        temp = (float4)(result.x, result.y, result.z, 1);
-         */
-
         // Threshold, to show background
-        //if(temp.x < 0.1)
+        //if(temp.x <= 0.1)
         //    temp = inputColor;
     } else {
         temp = inputColor;
