@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -e
 
 # Setup environment variables so that configure command will not ask user for input by keyboard
