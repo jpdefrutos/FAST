@@ -146,6 +146,11 @@ install(FILES ${PROJECT_BINARY_DIR}/lib/fast/__init__.py
 		)
 endif()
 
+if(FAST_MODULE_Clarius)
+install(FILES ${CLARIUS_SDK_DIR}/lib/liblisten.so
+		DESTINATION fast/lib)
+endif()
+
 # Copy configuration file
 # Create new configuration file for install
 
