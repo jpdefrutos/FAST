@@ -61,7 +61,7 @@ void RealSenseStreamer::generateStream() {
 
     rs2::config config;
     // Use a configuration object to request only depth from the pipeline
-    config.enable_stream(RS2_STREAM_DEPTH, 1280, 720, RS2_FORMAT_Z16, 30);
+    config.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 30);
     config.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_RGB8, 30);
 
     // Configure and start the pipeline
