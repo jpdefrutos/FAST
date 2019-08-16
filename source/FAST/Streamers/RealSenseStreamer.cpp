@@ -224,11 +224,14 @@ void RealSenseStreamer::generateStream() {
         Image::pointer colorImage = Image::New();
         colorImage->create(width, height, TYPE_UINT8, 3, std::move(colorData));
         mColorImage = colorImage;
-
-        addOutputData(0, colorImage);
-        addOutputData(1, depthImage);
-        addOutputData(2, cloud);
-
+        try {
+            addOutputData(0, colorImage);
+            addOutputData(1, depthImage);
+            addOutputData(2, cloud);
+        } catch(ThreadStopped &e) {
+            break;
+        }
+        
         frameAdded();
         mNrOfFrames++;
     }
