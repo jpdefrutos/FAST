@@ -102,12 +102,14 @@ void Window::setTitle(std::string title) {
 void Window::cleanup() {
     //delete QApplication::instance();
 }
+
 static QGLFormat getGLFormat() {
     QGLFormat qglFormat;
     qglFormat.setVersion(3,3);
     qglFormat.setProfile(QGLFormat::CoreProfile);
     return qglFormat;
 }
+
 void Window::initializeQtApp() {
     // Make sure only one QApplication is created
     if(!QApplication::instance()) {
@@ -178,6 +180,13 @@ View* Window::createView() {
     View* view = mWidget->addView();
 
     return view;
+}
+
+void Window::removeAllRenderers()
+{
+    for(auto view: getViews()){
+        view->removeAllRenderers();
+    }
 }
 
 void Window::start() {

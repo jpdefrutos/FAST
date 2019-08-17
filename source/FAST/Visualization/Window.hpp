@@ -17,6 +17,7 @@ namespace fast {
 
 class FAST_EXPORT  Window : public QObject, public Object {
     Q_OBJECT
+
     public:
         static void initializeQtApp();
         static QGLContext* getMainGLContext();
@@ -58,11 +59,13 @@ class FAST_EXPORT  Window : public QObject, public Object {
         float getScalingFactor() const;
         void saveScreenshotOnClose(std::string filename);
         void saveScreenshotOfViewsOnClose(std::string filename);
-    protected:
+
+protected:
         void startComputationThread();
         void stopComputationThread();
         Window();
         View* createView();
+        void removeAllRenderers();
 
         WindowWidget* mWidget;
         unsigned int mWidth, mHeight;
