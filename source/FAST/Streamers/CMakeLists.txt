@@ -43,6 +43,9 @@ if(FAST_MODULE_RealSense)
         RealSenseStreamer.cpp
         RealSenseStreamer.hpp
     )
+    fast_add_test_sources(
+            Tests/RealSenseStreamerTests.cpp
+    )
 endif()
 if(FAST_MODULE_Clarius)
     fast_add_sources(

@@ -2,6 +2,7 @@
 #include <FAST/Importers/VTKMeshFileImporter.hpp>
 #include <FAST/Importers/ImageFileImporter.hpp>
 #include <FAST/Visualization/ImageRenderer/ImageRenderer.hpp>
+#include <FAST/Streamers/MeshFileStreamer.hpp>
 #include "FAST/Testing.hpp"
 #include "VertexRenderer.hpp"
 
@@ -46,5 +47,26 @@ TEST_CASE("VertexRenderer 2D", "[fast][VertexRenderer][visual]") {
     window->set2DMode();
     window->start();
 }
+
+
+
+TEST_CASE("VertexRenderer 3D", "[fast][VertexRenderer][visual]") {
+    Config::setStreamingMode(STREAMING_MODE_NEWEST_FRAME_ONLY);
+    // Setup streaming
+    auto streamer = MeshFileStreamer::New();
+    streamer->setFilenameFormat("/home/androst/EchoBot_Recordings/2019-08-17-212249 TestDump004/PointClouds/#.vtk");
+    streamer->enableLooping();
+    streamer->setSleepTime(15);
+
+    VertexRenderer::pointer renderer = VertexRenderer::New();
+    renderer->addInputConnection(streamer->getOutputPort());
+    renderer->setDefaultSize(1.5);
+
+    SimpleWindow::pointer window = SimpleWindow::New();
+    window->addRenderer(renderer);
+    window->setTimeout(30000);
+    window->start();
+}
+
 
 }

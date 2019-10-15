@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     // Adjust camera
     window->getView(2)->setLookAt(Vector3f(0,-500,-500), Vector3f(0,0,1000), Vector3f(0,-1,0), 1, 5000);
     window->getView(2)->setBackgroundColor(Color::Black());
-    window->enableFullscreen();
+    //window->enableFullscreen();
 #ifdef FAST_CONTINUOUS_INTEGRATION
     // This will automatically close the window after 5 seconds, used for CI testing
     window->setTimeout(5*1000);
