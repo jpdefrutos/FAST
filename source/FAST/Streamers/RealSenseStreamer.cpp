@@ -61,8 +61,8 @@ void RealSenseStreamer::generateStream() {
 
     rs2::config config;
     // Use a configuration object to request only depth from the pipeline
-    config.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 30);
-    config.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_RGB8, 30);
+    config.enable_stream(RS2_STREAM_DEPTH, 848, 480, RS2_FORMAT_Z16, 30);
+    config.enable_stream(RS2_STREAM_COLOR, 320, 240, RS2_FORMAT_RGB8, 30);
 
     // Configure and start the pipeline
     rs2::pipeline_profile profile;
@@ -84,9 +84,11 @@ void RealSenseStreamer::generateStream() {
     rs2::align align(RS2_STREAM_COLOR);
 
     // Declare filters
-    rs2::decimation_filter dec_filter;  // Decimation - reduces depth frame density
+    rs2::decimation_filter decimation_filter;  // Decimation - reduces depth frame density
     rs2::spatial_filter spat_filter;    // Spatial    - edge-preserving spatial smoothing
     rs2::temporal_filter temp_filter;   // Temporal   - reduces temporal noise
+
+    decimation_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, 3);
 
     // Declare disparity transform from depth to disparity and vice versa
     rs2::disparity_transform depth_to_disparity(true);
@@ -127,6 +129,8 @@ void RealSenseStreamer::generateStream() {
             5. revert the results back (if step Disparity filter was applied
             to depth domain (each post processing block is optional and can be applied independantly).
             */
+
+            //filtered = decimation_filter.process(filtered);
             filtered = depth_to_disparity.process(filtered);
             filtered = spat_filter.process(filtered);
             filtered = temp_filter.process(filtered);
@@ -165,6 +169,10 @@ void RealSenseStreamer::generateStream() {
         // Get the depth frame's dimensions
         const uint16_t* p_depth_frame = reinterpret_cast<const uint16_t*>(depth_frame.get_data());
         uint8_t* p_other_frame = reinterpret_cast<uint8_t*>(const_cast<void*>(color_frame.get_data()));
+
+        int width_depth = static_cast<rs2::video_frame>(depth_frame).get_width();
+        int height_depth = static_cast<rs2::video_frame>(depth_frame).get_height();
+        //std::cout << "depth size: " << width_depth << " " << height_depth << std::endl;
 
         int width = static_cast<rs2::video_frame>(color_frame).get_width();
         int height = static_cast<rs2::video_frame>(color_frame).get_height();
@@ -212,17 +220,20 @@ void RealSenseStreamer::generateStream() {
         // Create depth image
         Image::pointer depthImage = Image::New();
         depthImage->create(width, height, TYPE_FLOAT, 1, std::move(depthData));
+        depthImage->setCreationTimestamp(depth_frame.get_timestamp());
         mDepthImage = depthImage;
 
         // Create mesh
         Mesh::pointer cloud = Mesh::New();
         cloud->create(points);
+        cloud->setCreationTimestamp(depth_frame.get_timestamp());
 
         // Create RGB camera image
         std::unique_ptr<uint8_t[]> colorData = std::make_unique<uint8_t[]>(width*height*3);
         std::memcpy(colorData.get(), p_other_frame, width*height*sizeof(uint8_t)*3);
         Image::pointer colorImage = Image::New();
         colorImage->create(width, height, TYPE_UINT8, 3, std::move(colorData));
+        colorImage->setCreationTimestamp(color_frame.get_timestamp());
         mColorImage = colorImage;
         try {
             addOutputData(0, colorImage);
@@ -231,7 +242,7 @@ void RealSenseStreamer::generateStream() {
         } catch(ThreadStopped &e) {
             break;
         }
-        
+
         frameAdded();
         mNrOfFrames++;
     }
