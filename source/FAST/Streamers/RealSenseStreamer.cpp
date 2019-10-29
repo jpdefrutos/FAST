@@ -220,20 +220,20 @@ void RealSenseStreamer::generateStream() {
         // Create depth image
         Image::pointer depthImage = Image::New();
         depthImage->create(width, height, TYPE_FLOAT, 1, std::move(depthData));
-        depthImage->setCreationTimestamp(depth_frame.get_timestamp());
+        depthImage->setCreationTimestamp(depth_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP));
         mDepthImage = depthImage;
 
         // Create mesh
         Mesh::pointer cloud = Mesh::New();
         cloud->create(points);
-        cloud->setCreationTimestamp(depth_frame.get_timestamp());
+        cloud->setCreationTimestamp(depth_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP));
 
         // Create RGB camera image
         std::unique_ptr<uint8_t[]> colorData = std::make_unique<uint8_t[]>(width*height*3);
         std::memcpy(colorData.get(), p_other_frame, width*height*sizeof(uint8_t)*3);
         Image::pointer colorImage = Image::New();
         colorImage->create(width, height, TYPE_UINT8, 3, std::move(colorData));
-        colorImage->setCreationTimestamp(color_frame.get_timestamp());
+        colorImage->setCreationTimestamp(color_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP));
         mColorImage = colorImage;
         try {
             addOutputData(0, colorImage);
