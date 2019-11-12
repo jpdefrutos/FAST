@@ -3,6 +3,7 @@
 
 #include "FAST/ProcessObject.hpp"
 #include "Streamer.hpp"
+#include <librealsense2/rs.hpp>
 #include <thread>
 #include <stack>
 
@@ -12,6 +13,26 @@ namespace fast {
 
 class Image;
 class MeshVertex;
+
+
+class FAST_EXPORT RealSenseFilter{
+    public:
+        enum FilterType{DECIMATE, SPATIAL, TEMPORAL, DEPTH_TO_DISPARITY, DISPARITY_TO_DEPTH};
+
+        RealSenseFilter(FilterType type, rs2::filter& filter);
+        void setOption(rs2_option option, float value);
+        std::vector<rs2_option> getFilterOptions(){ return mOptions;};
+        bool isEnabled(){ return mEnabled;};
+        rs2::frame process(rs2::frame frame);
+        FilterType getFilterType(){ return mFilterType;};
+
+    private:
+        FilterType mFilterType;
+        rs2::filter& mFilter;
+        std::vector<rs2_option> mOptions;
+        bool mEnabled = false;
+};
+
 
 /**
  * \brief Streams data RGB and depth data from a kinect device.
@@ -23,33 +44,23 @@ class MeshVertex;
  * Output port 1: Registered depth image
  * Output port 2: Registered point cloud
  */
+
 class FAST_EXPORT RealSenseStreamer : public Streamer {
     FAST_OBJECT(RealSenseStreamer);
-    public:
-        /**
-         * Set maximum range in millimeters. All points above this range will be dropped.
-         * @param range
-         */
-        void setMaxRange(float range);
-        /**
-         * Set minimum range in millimeters. All points below this range will be dropped.
-         * @param range
-         */
-        void setMinRange(float range);
 
+    public:
+        void setMaxRange(float range);
+        void setMinRange(float range);
         void setMaxWidth(float range);
         void setMinWidth(float range);
         void setMaxHeight(float range);
         void setMinHeight(float range);
 
         uint getNrOfFrames() const;
-        /**
-         * Gets corresponding 3D point from rgb image coordinate
-         * @param x
-         * @param y
-         * @return
-         */
         MeshVertex getPoint(int x, int y);
+
+        void setFilterValue(RealSenseFilter::FilterType filter, rs2_option option, float value);
+
         ~RealSenseStreamer();
     private:
         RealSenseStreamer();
@@ -66,6 +77,7 @@ class FAST_EXPORT RealSenseStreamer : public Streamer {
 
         uint mNrOfFrames;
 
+        std::vector<RealSenseFilter> mFilters;
         rs2_intrinsics* intrinsics;
         SharedPointer<Image> mDepthImage;
         SharedPointer<Image> mColorImage;
