@@ -102,7 +102,8 @@ set(INCLUDE_FOLDERS
     QtThemeSupport
     QtWidgets
     QtXml
-    QtZlib)
+    QtZlib
+	librealsense2)
 if(NOT WIN32)
 list(APPEND INCLUDE_FOLDERS
     QtGlxSupport
@@ -181,11 +182,6 @@ install(FILES ${PROJECT_BINARY_DIR}/lib/fast/fast.py
 install(FILES ${PROJECT_BINARY_DIR}/lib/fast/__init__.py
 		DESTINATION fast/python/fast
 		)
-endif()
-
-if(FAST_MODULE_Clarius)
-install(FILES ${CLARIUS_SDK_DIR}/lib/liblisten.so
-		DESTINATION fast/lib)
 endif()
 
 # Copy configuration file
