@@ -214,8 +214,6 @@ void RealSenseStreamer::generateStream() {
             points.push_back(vertex);
         }
 
-        std::cout << points.size() << std::endl;
-
         // Create depth image
         int width = static_cast<rs2::video_frame>(depth_frame).get_width();
         int height = static_cast<rs2::video_frame>(depth_frame).get_height();
@@ -263,15 +261,11 @@ void RealSenseStreamer::generateStream() {
 
 void RealSenseStreamer::setFilterValue(RealSenseFilter::FilterType filterType, rs2_option option, float value)
 {
-    std::cout << mFilters.size() << std::endl;
     for(auto filter: mFilters)
     {
-        std::cout << filter.getFilterType() << std::endl;
         if(filter.getFilterType() == filterType)
         {
-            std::cout << option << " " <<  value << std::endl;
             filter.setOption(option, value);
-            std::cout << "Worked" << std::endl;
         }
     }
 }

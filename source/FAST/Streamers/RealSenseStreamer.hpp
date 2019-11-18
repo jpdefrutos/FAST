@@ -3,9 +3,9 @@
 
 #include "FAST/ProcessObject.hpp"
 #include "Streamer.hpp"
-#include <librealsense2/rs.hpp>
 #include <thread>
 #include <stack>
+#include <librealsense2/rs.hpp>
 
 struct rs2_intrinsics;
 
@@ -13,7 +13,6 @@ namespace fast {
 
 class Image;
 class MeshVertex;
-
 
 class FAST_EXPORT RealSenseFilter{
     public:
