@@ -14,6 +14,7 @@ void SceneGraphNode::reset() {
 // Set transformation to its parent
 void SceneGraphNode::setTransformation(
         AffineTransformation::pointer transformation) {
+    std::unique_lock<std::mutex> lock(mValueLock);
     mTransformation = transformation;
     mIsRootNode = false;
 }
@@ -37,7 +38,8 @@ bool SceneGraphNode::isRootNode() const {
     return mIsRootNode;
 }
 
-AffineTransformation::pointer SceneGraphNode::getTransformation() const {
+AffineTransformation::pointer SceneGraphNode::getTransformation(){
+    std::unique_lock<std::mutex> lock(mValueLock);
     return mTransformation;
 }
 

@@ -13,7 +13,7 @@ class FAST_EXPORT  SceneGraphNode : public Object {
         void setTransformation(AffineTransformation::pointer transformation);
         void setParent(SceneGraphNode::pointer parent);
         SceneGraphNode::pointer getParent() const;
-        AffineTransformation::pointer getTransformation() const;
+        AffineTransformation::pointer getTransformation();
         void reset();
         bool isDataNode() const;
         bool isRootNode() const;
@@ -23,6 +23,7 @@ class FAST_EXPORT  SceneGraphNode : public Object {
         SceneGraphNode::pointer mParent;
         bool mIsRootNode;
         AffineTransformation::pointer mTransformation;
+        std::mutex mValueLock;
 };
 
 class SpatialDataObject;
