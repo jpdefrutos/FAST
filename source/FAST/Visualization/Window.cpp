@@ -182,6 +182,13 @@ View* Window::createView() {
     return view;
 }
 
+void Window::reinitializeViews()
+{
+    for(auto view: getViews()){
+        view->reinitialize();
+    }
+}
+
 void Window::removeAllRenderers()
 {
     for(auto view: getViews()){
