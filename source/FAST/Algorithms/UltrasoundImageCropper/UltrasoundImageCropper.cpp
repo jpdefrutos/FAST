@@ -17,14 +17,13 @@ void UltrasoundImageCropper::execute() {
     Image::pointer image = getInputData<Image>();
 
     if(image->getDimensions() != 2) {
-        throw Exception("THe UltrasoundImageCropper is only for 2D images");
+        throw Exception("The UltrasoundImageCropper is only for 2D images");
     }
 
     OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::CommandQueue queue = device->getCommandQueue();
     OpenCLImageAccess::pointer imageAccess = image->getOpenCLImageAccess(ACCESS_READ, device);
 
-    std::cout << "static cropping:" << m_staticCropping << std::endl;
     if(m_width == -1 || !m_staticCropping) {
         cl::Program program = getOpenCLProgram(device);
         cl::Kernel kernel(program, "lineSearch");
