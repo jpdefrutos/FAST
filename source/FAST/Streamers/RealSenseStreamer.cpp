@@ -306,6 +306,21 @@ void RealSenseStreamer::setMinHeight(float range) {
     mMinHeight = range;
 }
 
+std::vector<MeshVertex> RealSenseStreamer::rsPointsToVertices(rs2::points rs_points, rs2::frame color_frame)
+{
+    auto vertices = rs_points.get_vertices();
+    auto texcoords = rs_points.get_texture_coordinates();
+
+    std::vector<MeshVertex> points;
+    for(size_t i = 0; i < rs_points.size(); ++i)
+    {
+        MeshVertex vertex(Vector3f(vertices[i].x*1000, vertices[i].y*1000, vertices[i].z*1000)); // Convert to mm
+        auto rgb = get_texcolor(color_frame, texcoords[i].u, texcoords[i].v);
+        vertex.setColor(Color(rgb[0]/255.0f, rgb[1]/255.0f, rgb[2]/255.0f));
+        points.push_back(vertex);
+    }
+    return points;
+}
 
 RealSenseFilter::RealSenseFilter(FilterType type, rs2::filter &filter):
     mFilterType(type),

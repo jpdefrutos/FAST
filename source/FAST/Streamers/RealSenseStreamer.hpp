@@ -59,6 +59,7 @@ class FAST_EXPORT RealSenseStreamer : public Streamer {
         MeshVertex getPoint(int x, int y);
 
         void setFilterValue(RealSenseFilter::FilterType filter, rs2_option option, float value);
+        std::vector<MeshVertex> rsPointsToVertices(rs2::points points, rs2::frame color_frame);
 
         ~RealSenseStreamer();
     private:
