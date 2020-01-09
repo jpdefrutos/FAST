@@ -11,10 +11,6 @@ uniform int positionType;
 
 void main()
 {
-    if(positionType == 2) {
-        gl_Position = perspectiveTransform * viewTransform * transform * vec4(aPos, 1.0);
-    } else {
-        gl_Position = transform * vec4(aPos, 1.0);
-    }
+    gl_Position = perspectiveTransform * viewTransform * transform * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
 }

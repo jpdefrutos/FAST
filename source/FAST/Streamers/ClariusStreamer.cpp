@@ -93,7 +93,6 @@ void ClariusStreamer::stop() {
     int success = clariusDisconnect(nullptr);
     if(success < 0)
         throw Exception("Unable to disconnect from clarius scanner");
-
     success = clariusDestroyListener();
     if(success < 0)
         throw Exception("Unable to destroy clarius listener");
@@ -110,5 +109,18 @@ void ClariusStreamer::setConnectionPort(int port) {
         throw Exception("Illegal port nr " + std::to_string(port));
     mPort = port;
 }
+
+void ClariusStreamer::toggleFreeze() {
+	clariusUserFunction(USER_FN_TOGGLE_FREEZE, nullptr);
+}
+
+void ClariusStreamer::increaseDepth() {
+	clariusUserFunction(USER_FN_DEPTH_INC, nullptr);
+}
+
+void ClariusStreamer::decreaseDepth() {
+	clariusUserFunction(USER_FN_DEPTH_DEC, nullptr);
+}
+
 
 }
