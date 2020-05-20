@@ -12,6 +12,7 @@ fast_add_sources(
     AffineTransformationFileStreamer.cpp
     AffineTransformationFileStreamer.hpp
 )
+fast_add_process_object(ImageFileStreamer ImageFileStreamer.hpp)
 if(FAST_MODULE_OpenIGTLink)
     fast_add_sources(
             OpenIGTLinkStreamer.hpp
@@ -19,6 +20,7 @@ if(FAST_MODULE_OpenIGTLink)
         Tests/DummyIGTLServer.cpp
         Tests/DummyIGTLServer.hpp
     )
+    fast_add_process_object(OpenIGTLinkStreamer OpenIGTLinkStreamer.hpp)
     if(FAST_MODULE_Visualization)
     fast_add_test_sources(
             Tests/OpenIGTLinkStreamerTests.cpp
@@ -52,6 +54,14 @@ if(FAST_MODULE_Clarius)
         ClariusStreamer.cpp
         ClariusStreamer.hpp
     )
+    fast_add_process_object(ClariusStreamer ClariusStreamer.hpp)
+endif()
+if(FAST_MODULE_HDF5)
+    fast_add_sources(
+        UFFStreamer.cpp
+        UFFStreamer.hpp
+    )
+    fast_add_process_object(UFFStreamer UFFStreamer.hpp)
 endif()
 
 fast_add_test_sources(

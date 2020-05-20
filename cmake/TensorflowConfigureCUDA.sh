@@ -33,7 +33,7 @@ if [ -e /usr/local/cuda ]; then
     export TF_NEED_CUDA=1
     export TF_CUDA_COMPUTE_CAPABILITIES="3.5,5.2,6.1"
     export CUDA_TOOLKIT_PATH=/usr/local/cuda
-    export CUDNN_INSTALL_PATH=/usr/local/cuda
+    export CUDNN_INSTALL_PATH=${CUDA_TOOLKIT_PATH}
     export TF_CUDA_VERSION="$($CUDA_TOOLKIT_PATH/bin/nvcc --version | sed -n 's/^.*release \(.*\),.*/\1/p')"
     export TF_CUDNN_VERSION="$(sed -n 's/^#define CUDNN_MAJOR\s*\(.*\).*/\1/p' $CUDNN_INSTALL_PATH/include/cudnn.h)"
     export GCC_HOST_COMPILER_PATH=/usr/bin/gcc

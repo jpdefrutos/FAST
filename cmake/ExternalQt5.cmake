@@ -5,7 +5,7 @@ include(cmake/Externals.cmake)
 # List of modules can be found in git repo here: github.com/qt/qt5
 set(MODULES_TO_EXCLUDE
         -skip qt3d
-        -skip qtactiveqt
+        #-skip qtactiveqt
         -skip qtandroidextras
         -skip qtcanvas3d
         -skip qtcharts
@@ -35,9 +35,9 @@ set(MODULES_TO_EXCLUDE
         -skip qtscxml
         -skip qtsensors
         -skip qtserialbus
-        -skip qtserialport
+        #-skip qtserialport
         -skip qtspeech
-        -skip qtsvg
+        #-skip qtsvg
         -skip qtsystems
         -skip qttools
         -skip qttranslations
@@ -145,6 +145,8 @@ if(WIN32)
     set(Qt5OpenGL_LIBRARY Qt5OpenGL.lib)
     set(Qt5Multimedia_LIBRARY Qt5Multimedia.lib)
     set(Qt5MultimediaWidgets_LIBRARY Qt5MultimediaWidgets.lib)
+    set(Qt5SerialPort_LIBRARY Qt5SerialPort.lib)
+    set(Qt5PrintSupport_LIBRARY Qt5PrintSupport.lib)
 else()
     set(Qt5Gui_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5Gui${CMAKE_SHARED_LIBRARY_SUFFIX})
     set(Qt5Core_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5Core${CMAKE_SHARED_LIBRARY_SUFFIX})
@@ -152,6 +154,8 @@ else()
     set(Qt5OpenGL_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5OpenGL${CMAKE_SHARED_LIBRARY_SUFFIX})
     set(Qt5Multimedia_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5Multimedia${CMAKE_SHARED_LIBRARY_SUFFIX})
     set(Qt5MultimediaWidgets_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5MultimediaWidgets${CMAKE_SHARED_LIBRARY_SUFFIX})
+    set(Qt5SerialPort_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5SerialPort${CMAKE_SHARED_LIBRARY_SUFFIX})
+    set(Qt5PrintSupport_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}Qt5PrintSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
 endif()
 set(Qt5Core_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtCore)
 set(Qt5Gui_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtGui)
@@ -159,4 +163,5 @@ set(Qt5Widgets_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtWidgets)
 set(Qt5OpenGL_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtOpenGL)
 set(Qt5Multimedia_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtMultimedia)
 set(Qt5MultimediaWidgets_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtMultimediaWidgets)
+set(Qt5PrintSupport_INCLUDE_DIRS ${FAST_EXTERNAL_INSTALL_DIR}/include/QtPrintSupport)
 list(APPEND FAST_EXTERNAL_DEPENDENCIES qt5)

@@ -51,7 +51,6 @@ Window::Window() {
             windowScaling = 2;
             // 4K screens
             Reporter::info() << "Large screen detected with width: " << screenWidth << Reporter::end();
-			std::cout << "default font point size:" << defaultFont.pointSize();
             if(defaultFont.pointSize() <= 12)
                 mGUIScalingFactor = 1.75;
         } else {
@@ -112,6 +111,9 @@ static QGLFormat getGLFormat() {
 }
 
 void Window::initializeQtApp() {
+    // First: Tell Qt where to finds its plugins
+    QCoreApplication::setLibraryPaths({ Config::getQtPluginsPath().c_str() }); // Removes need for qt.conf
+
     // Make sure only one QApplication is created
     if(!QApplication::instance()) {
         Reporter::info() << "Creating new QApp" << Reporter::end();
@@ -178,7 +180,7 @@ void Window::stop() {
 }
 
 View* Window::createView() {
-    View* view = mWidget->addView();
+    View* view = mWidget->createView();
 
     return view;
 }
@@ -282,6 +284,7 @@ void Window::startComputationThread() {
 
         for(int i = 0; i < getViews().size(); i++)
             mThread->addView(getViews()[i]);
+        mThread->setProcessObjects(m_processObjects);
         QGLContext* mainGLContext = Window::getMainGLContext();
         if(!mainGLContext->isValid()) {
             throw Exception("QGL context is invalid!");
@@ -346,6 +349,14 @@ void Window::saveScreenshotOnClose(std::string filename) {
 
 void Window::saveScreenshotOfViewsOnClose(std::string filename) {
     mWidget->saveScreenshotOfViewsOnClose(filename);
+}
+
+QWidget* Window::getWidget() {
+    return mWidget;
+}
+
+void Window::addProcessObject(SharedPointer<ProcessObject> po) {
+    m_processObjects.push_back(po);
 }
 
 } // end namespace fast

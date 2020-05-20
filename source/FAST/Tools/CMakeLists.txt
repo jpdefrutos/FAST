@@ -1,7 +1,7 @@
 fast_add_subdirectories(
-    OpenIGTLinkClient
+    #OpenIGTLinkClient
     OpenIGTLinkServer
-    #viewer
+    Pipeline
 )
 fast_add_sources(
     CommandLineParser.cpp

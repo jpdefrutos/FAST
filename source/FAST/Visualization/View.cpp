@@ -30,6 +30,7 @@
 namespace fast {
 
 void View::addRenderer(Renderer::pointer renderer) {
+    std::lock_guard<std::mutex> lock(m_mutex);
     renderer->setView(this);
     // Can renderer be casted to volume renderer test:
     auto test = std::dynamic_pointer_cast<VolumeRenderer>(renderer);
@@ -42,7 +43,14 @@ void View::addRenderer(Renderer::pointer renderer) {
     }
 }
 
+void View::removeRenderer(Renderer::pointer rendererToRemove) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    mVolumeRenderers.erase(std::find(mVolumeRenderers.begin(), mVolumeRenderers.end(), rendererToRemove));
+    mNonVolumeRenderers.erase(std::find(mNonVolumeRenderers.begin(), mNonVolumeRenderers.end(), rendererToRemove));
+}
+
 void View::removeAllRenderers() {
+    std::lock_guard<std::mutex> lock(m_mutex);
     mVolumeRenderers.clear();
     mNonVolumeRenderers.clear();
 }
@@ -60,6 +68,12 @@ QGLFormat View::getGLFormat() {
 
 View::View() {
     createInputPort<Camera>(0, false);
+
+    m_zoom = 1.0f;
+
+    createBooleanAttribute("2Dmode", "2D mode", "Switch the view mode between 3D and 2D", false);
+    createStringAttribute("background-color", "Background color", "Set the background color of the view", "white");
+    createFloatAttribute("zoom", "Zoom level", "Zoom level", m_zoom);
 
     mBackgroundColor = Color::White();
     zNear = 0.1;
@@ -86,6 +100,16 @@ View::View() {
         reportInfo() << "The custom Qt GL context is invalid!" << Reporter::end();
         exit(-1);
     }
+}
+
+void View::loadAttributes() {
+    if(getBooleanAttribute("2Dmode")) {
+        set2DMode();
+    } else {
+        set3DMode();
+    }
+    setBackgroundColor(Color::fromString(getStringAttribute("background-color")));
+    setZoom(getFloatAttribute("zoom"));
 }
 
 void View::setCameraInputConnection(DataChannel::pointer port) {
@@ -178,10 +202,17 @@ void View::updateRenderersInput(int executeToken) {
 }
 
 void View::updateRenderers() {
-    for(Renderer::pointer renderer : mNonVolumeRenderers) {
+    // Copy list of renderers while locked
+    std::unique_lock<std::mutex> lock(m_mutex);
+    auto nonVolumeRenderers = mNonVolumeRenderers;
+    auto volumeRenderers = mVolumeRenderers;
+    lock.unlock();
+
+    // Then execute
+    for(auto renderer : nonVolumeRenderers) {
         renderer->execute();
     }
-    for(Renderer::pointer renderer : mVolumeRenderers) {
+    for(auto renderer : volumeRenderers) {
         renderer->execute();
     }
 }
@@ -345,10 +376,10 @@ void View::recalculateCamera() {
         } else {
             scalingHeight = orthoAspect / aspect;
         }
-        mLeft = min[xDirection] * scalingWidth;
-        mRight = max[xDirection] * scalingWidth;
-        mBottom = min[yDirection] * scalingHeight;
-        mTop = max[yDirection] * scalingHeight;
+        mLeft = (min[xDirection] / m_zoom) * scalingWidth;
+        mRight = (max[xDirection] / m_zoom) * scalingWidth;
+        mBottom = (min[yDirection] / m_zoom) * scalingHeight;
+        mTop = (max[yDirection] / m_zoom) * scalingHeight;
 
         mCameraPosition[0] = mLeft + (mRight - mLeft) * 0.5f - centroid[0]; // center camera
         mCameraPosition[1] = mBottom + (mTop - mBottom) * 0.5f - centroid[1]; // center camera
@@ -450,8 +481,7 @@ void View::recalculateCamera() {
         float z_height = (max[yDirection] - min[yDirection]) * 0.5
                          / tan(fieldOfViewY * 0.5);
         //reportInfo() << "asd: " << z_width << " " << z_height << Reporter::end();
-        float minimumTranslationToSeeEntireObject = (
-                z_width < z_height ? z_height : z_width);
+        float minimumTranslationToSeeEntireObject = (z_width < z_height ? z_height : z_width) / m_zoom;
         float boundingBoxDepth = (max[zDirection] - min[zDirection]);
         //reportInfo() << "minimum translation to see entire object: " << minimumTranslationToSeeEntireObject  << Reporter::end();
         //reportInfo() << "half depth of bounding box " << boundingBoxDepth*0.5 << Reporter::end();
@@ -490,7 +520,8 @@ void View::initializeGL() {
     // Disable synchronized rendering here to avoid blocking in renderer
     for(int i = 0; i < renderers.size(); i++) {
         renderers[i]->setSynchronizedRendering(false);
-        renderers[i]->update();
+        if(!renderers[i]->isDisabled())
+            renderers[i]->update();
         renderers[i]->setSynchronizedRendering(true);
     }
     if(renderers.empty())
@@ -549,7 +580,8 @@ void View::paintGL() {
 
     if(mAutoUpdateCamera) {
         // If bounding box has changed, recalculate camera
-        Vector3f min, max;
+        Vector3f min = mBBMin;
+        Vector3f max = mBBMax;
         getMinMaxFromBoundingBoxes(!mIsIn2DMode, min, max);
         if(mBBMin != min || mBBMax != max)
             recalculateCamera();
@@ -790,6 +822,24 @@ Matrix4f View::getViewMatrix() const {
 
 Matrix4f View::getPerspectiveMatrix() const {
     return mPerspectiveMatrix;
+}
+
+void View::setZoom(float zoom) {
+    if(zoom < 0.0f)
+        throw Exception("Zoom level must be larger than 0");
+    m_zoom = zoom; // This value will be used on startup/initialization of camera
+    // If view is running we should also change current values:
+    if(mIsIn2DMode) {
+        mLeft = mLeft / zoom;
+        mRight = mRight / zoom;
+        mTop = mTop / zoom;
+        mBottom = mBottom / zoom;
+        mPerspectiveMatrix = loadOrthographicMatrix(mLeft, mRight, mBottom, mTop, zNear, zFar);
+    } else {
+        float diff = mCameraPosition[2] - mCameraPosition[2] / zoom;
+        mCameraPosition[2] = mCameraPosition[2] / zoom;
+        m3DViewingTransformation.pretranslate(Vector3f(0, 0, diff));
+    }
 }
 
 } // end namespace fast

@@ -1,6 +1,4 @@
-#ifndef VIEW_HPP_
-#define VIEW_HPP_
-
+#pragma once
 
 #include "FAST/AffineTransformation.hpp"
 #include "FAST/Data/Color.hpp"
@@ -21,6 +19,7 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
     Q_OBJECT
     public:
         void addRenderer(Renderer::pointer renderer);
+    	void removeRenderer(Renderer::pointer renderer);
         void removeAllRenderers();
         void keyPressEvent(QKeyEvent* event);
         void mouseMoveEvent(QMouseEvent* event);
@@ -49,6 +48,12 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
 		static QGLFormat getGLFormat();
 		Matrix4f getViewMatrix() const;
 		Matrix4f getPerspectiveMatrix() const;
+		void loadAttributes() override;
+        /**
+         * Function for setting the zoom level of the view. Level 1 is no zooming. 
+           Level 0.5 makes images in the view half its size. Level 2 makes images in the view double in size.
+         */
+        void setZoom(float zoom);
     private:
         uint m_FBO = 0;
         uint m_textureColor = 0;
@@ -73,6 +78,7 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
         
         bool mQuit;
         
+        float m_zoom = 1.0f;
 		float zNear, zFar;
         float fieldOfViewX, fieldOfViewY;
         float aspect;
@@ -101,15 +107,10 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
 		void stopRenderers();
 		void resetRenderers();
 
+		std::mutex m_mutex;
+
     friend class ComputationThread;
 
 };
 
-
-
 } // end namespace fast
-
-
-
-
-#endif /* VIEW_HPP_ */

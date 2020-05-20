@@ -1,5 +1,4 @@
-#ifndef WINDOW_HPP_
-#define WINDOW_HPP_
+#pragma once
 
 #include "FASTExport.hpp"
 #include "FAST/Object.hpp"
@@ -14,6 +13,8 @@ class QEventLoop;
 class QOffscreenSurface;
 
 namespace fast {
+
+class ProcessObject;
 
 class FAST_EXPORT  Window : public QObject, public Object {
     Q_OBJECT
@@ -60,8 +61,9 @@ class FAST_EXPORT  Window : public QObject, public Object {
         float getScalingFactor() const;
         void saveScreenshotOnClose(std::string filename);
         void saveScreenshotOfViewsOnClose(std::string filename);
-
-protected:
+        QWidget* getWidget();
+        void addProcessObject(SharedPointer<ProcessObject> po);
+    protected:
         void startComputationThread();
         void stopComputationThread();
         Window();
@@ -75,6 +77,7 @@ protected:
         float mGUIScalingFactor = 1.0f;
         QEventLoop* mEventLoop;
         ComputationThread* mThread;
+        std::vector<SharedPointer<ProcessObject>> m_processObjects;
     private:
         static QGLContext* mMainGLContext;
     public slots:
@@ -85,4 +88,3 @@ protected:
 
 } // end namespace fast
 
-#endif
