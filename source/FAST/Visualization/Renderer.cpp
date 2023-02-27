@@ -6,6 +6,7 @@
 namespace fast {
 
 Renderer::Renderer() {
+    createBooleanAttribute("disabled", "Disabled", "", false);
 }
 
 
@@ -25,54 +26,47 @@ uint Renderer::addInputConnection(DataChannel::pointer port) {
     return nr;
 }
 
-void Renderer::lock() {
-    mMutex.lock();
-}
-
 void Renderer::setView(View* view) {
     m_view = view;
-}
-
-void Renderer::unlock() {
-    mMutex.unlock();
 }
 
 void Renderer::stopPipeline() {
     mStop = true;
     mHasRendered = true;
-    mRenderedCV.notify_one();
     ProcessObject::stopPipeline();
 }
 
 void Renderer::postDraw() {
+    std::lock_guard<std::mutex> lock(mMutex);
     mHasRendered = true;
-    mRenderedCV.notify_one();
 }
 
 void Renderer::execute() {
-    std::unique_lock<std::mutex> lock(mMutex);
-    if(m_disabled)
-        return;
-    if(mStop) {
-        return;
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        if(m_disabled)
+            return;
+        if(mStop) {
+            return;
+        }
     }
 
-    // Check if current images has not been rendered, if not wait
-    while(!mHasRendered && m_synchedRendering) {
-        mRenderedCV.wait(lock);
-    }
     // This simply gets the input data for each connection and puts it into a data structure
     for(uint inputNr = 0; inputNr < getNrOfInputConnections(); inputNr++) {
         if(hasNewInputData(inputNr)) {
             SpatialDataObject::pointer input = getInputData<SpatialDataObject>(inputNr);
-
-            mHasRendered = false;
-            mDataToRender[inputNr] = input;
+            {
+                std::lock_guard<std::mutex> lock(mMutex);
+                if(mHasRendered) {
+                    mHasRendered = false;
+                    mDataToRender[inputNr] = input;
+                }
+            }
         }
     }
 }
 
-BoundingBox Renderer::getBoundingBox(bool transform) {
+DataBoundingBox Renderer::getBoundingBox(bool transform) {
     std::unique_lock<std::mutex> lock(mMutex);
     std::vector<Vector3f> coordinates;
 
@@ -80,7 +74,7 @@ BoundingBox Renderer::getBoundingBox(bool transform) {
         throw Exception("Renderer has no input data. Unable to create bounding box and thereby initialize GL scene.");
 
     for(auto it : mDataToRender) {
-        BoundingBox transformedBoundingBox;
+        DataBoundingBox transformedBoundingBox;
         if(transform) {
             transformedBoundingBox = it.second->getTransformedBoundingBox();
         } else {
@@ -96,7 +90,7 @@ BoundingBox Renderer::getBoundingBox(bool transform) {
     if(coordinates.size() == 0)
         throw Exception("Renderer did not get any data. Unable to create bounding box and thereby initialize GL scene.");
 
-    return BoundingBox(coordinates);
+    return DataBoundingBox(coordinates);
 }
 
 
@@ -211,9 +205,12 @@ void Renderer::setShaderUniform(std::string name, Affine3f matrix, std::string s
     setShaderUniform(name, matrix.matrix(), shaderProgram);
 }
 
-
 void Renderer::setShaderUniform(std::string name, Vector3f vector, std::string shaderProgram) {
     glUniform3f(getShaderUniformLocation(name, shaderProgram), vector.x(), vector.y(), vector.z());
+}
+
+void Renderer::setShaderUniform(std::string name, Vector4f vector, std::string shaderProgram) {
+    glUniform4f(getShaderUniformLocation(name, shaderProgram), vector.x(), vector.y(), vector.z(), vector.w());
 }
 
 void Renderer::setShaderUniform(std::string name, float value, std::string shaderProgram) {
@@ -231,7 +228,7 @@ void Renderer::setShaderUniform(std::string name, int value, std::string shaderP
 int Renderer::getShaderUniformLocation(std::string name, std::string shaderProgram) {
     int location = glGetUniformLocation(getShaderProgram(shaderProgram), name.c_str());
     if(location == -1)
-        throw Exception("Unable to find location of matrix4f uniform " + name + " in shader program " + shaderProgram);
+        throw Exception("Unable to find location of uniform " + name + " in shader program " + shaderProgram);
     return location;
 }
 
@@ -248,8 +245,27 @@ bool Renderer::isDisabled() const {
     return m_disabled;
 }
 
-void Renderer::setSynchronizedRendering(bool synched) {
-    m_synchedRendering = synched;
+bool Renderer::is2DOnly() const {
+    return m_2Donly;
+}
+
+bool Renderer::is3DOnly() const {
+    return m_3Donly;
+}
+
+std::unordered_map<uint, std::shared_ptr<SpatialDataObject>> Renderer::getDataToRender() {
+    std::lock_guard<std::mutex> lock(mMutex);
+    auto copy = mDataToRender;
+    mHasRendered = true;
+    return copy;
+}
+
+void Renderer::clearDataToRender() {
+    mDataToRender.clear();
+}
+
+void Renderer::loadAttributes() {
+    setDisabled(getBooleanAttribute("disabled"));
 }
 
 }

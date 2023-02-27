@@ -3,17 +3,16 @@
 
 namespace fast {
 
-ImageGradient::ImageGradient() {
+ImageGradient::ImageGradient(bool use16bit) {
     createInputPort<Image>(0);
     createOutputPort<Image>(0);
     createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/ImageGradient/ImageGradient.cl");
 
-    mUse16bitFormat = false;
+    mUse16bitFormat = use16bit;
 }
 
 void ImageGradient::execute() {
-    Image::pointer input = getInputData<Image>(0);
-    Image::pointer output = getOutputData<Image>(0);
+    auto input = getInputData<Image>(0);
 
     std::string buildOptions = "";
     DataType type = TYPE_FLOAT;
@@ -23,15 +22,16 @@ void ImageGradient::execute() {
     }
 
     // Initialize output image
+    Image::pointer output;
     if(input->getDimensions() == 2) {
-        output->create(
+        output = Image::create(
                 input->getWidth(),
                 input->getHeight(),
                 type,
                 2
         );
     } else {
-         output->create(
+         output = Image::create(
                 input->getWidth(),
                 input->getHeight(),
                 input->getDepth(),
@@ -73,6 +73,7 @@ void ImageGradient::execute() {
                 cl::NullRange
         );
     }
+    addOutputData(0, output);
 }
 
 void ImageGradient::set16bitStorageFormat() {

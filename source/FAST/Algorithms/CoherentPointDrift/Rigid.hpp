@@ -1,18 +1,22 @@
-#ifndef FAST_RIGID_H
-#define FAST_RIGID_H
+#pragma once
 
-
-#include "FAST/AffineTransformation.hpp"
 #include "FAST/ProcessObject.hpp"
 #include "FAST/Data/Mesh.hpp"
 #include "FAST/Algorithms/CoherentPointDrift/CoherentPointDrift.hpp"
 
 namespace fast {
 
-    class FAST_EXPORT CoherentPointDriftRigid: public CoherentPointDrift {
-    FAST_OBJECT(CoherentPointDriftRigid);
+/**
+ * @brief Rigid coherent point drift registration
+ *
+ * @ingroup registration
+*/
+class FAST_EXPORT CoherentPointDriftRigid: public CoherentPointDrift {
+    FAST_PROCESS_OBJECT(CoherentPointDriftRigid);
     public:
-        CoherentPointDriftRigid();
+        FAST_CONSTRUCTOR(CoherentPointDriftRigid);
+        FAST_CONNECT(CoherentPointDriftRigid, Fixed, 0);
+        FAST_CONNECT(CoherentPointDriftRigid, Moving, 1);
         void maximization(MatrixXf& fixedPoints, MatrixXf& movingPoints) override;
         void initializeVarianceAndMore() override;
 
@@ -28,5 +32,3 @@ namespace fast {
 
 }
 
-
-#endif //FAST_RIGID_H

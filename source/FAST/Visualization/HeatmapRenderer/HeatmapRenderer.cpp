@@ -4,15 +4,45 @@
 
 namespace fast {
 
-HeatmapRenderer::HeatmapRenderer() {
+void HeatmapRenderer::loadAttributes() {
+    Renderer::loadAttributes();
+    auto classColors = getStringListAttribute("channel-colors");
+    for(int i = 0; i < classColors.size(); i += 2) {
+        setChannelColor(std::stoi(classColors[i]), Color::fromString(classColors[i+1]));
+    }
+    auto hiddenChannels = getIntegerListAttribute("hidden-channels");
+    for(auto&& item : hiddenChannels) {
+        if(item >= 0)
+            setChannelHidden(item, true);
+    }
+    setMaxOpacity(getFloatAttribute("max-opacity"));
+    setMinConfidence(getFloatAttribute("min-confidence"));
+    setInterpolation(getBooleanAttribute("interpolation"));
+}
+
+HeatmapRenderer::HeatmapRenderer(bool hideChannelZero, bool useInterpolation, float minConfidence, float maxOpacity, std::map<uint, Color> channelColors) {
+    m_2Donly = true;
     createInputPort<Tensor>(0, false);
     createOpenCLProgram(Config::getKernelSourcePath() + "/Visualization/HeatmapRenderer/HeatmapRenderer.cl");
     createShaderProgram({
                                 Config::getKernelSourcePath() + "/Visualization/ImageRenderer/ImageRenderer.vert",
-                                Config::getKernelSourcePath() + "/Visualization/ImageRenderer/ImageRenderer.frag",
+                                Config::getKernelSourcePath() + "/Visualization/ImageRenderer/ImageRendererFLOAT.frag",
                         });
     mIsModified = false;
     mColorsModified = true;
+    for(auto& item : channelColors) {
+        setChannelColor(item.first, item.second);
+    }
+    if(hideChannelZero)
+        setChannelHidden(0, true);
+    setInterpolation(useInterpolation);
+    setMinConfidence(minConfidence);
+    setMaxOpacity(maxOpacity);
+    createStringAttribute("channel-colors", "Channel Colors", "Color of each channel", "");
+    createIntegerAttribute("hidden-channels", "Hidden Channels", "List of channels to hide", -1);
+    createFloatAttribute("max-opacity", "Max Opacity", "Max Opacity", mMaxOpacity);
+    createFloatAttribute("min-confidence", "Min Confidence", "Min Confidence", mMinConfidence);
+    createBooleanAttribute("interpolation", "Interpolation", "Whether to interpolate when rendering heatmaps or not", mUseInterpolation);
 }
 
 void HeatmapRenderer::setChannelColor(uint channel, Color color) {
@@ -27,11 +57,13 @@ void HeatmapRenderer::setChannelHidden(uint channel, bool hide) {
     deleteAllTextures();
 }
 
-void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) {
-    if(mDataToRender.empty())
+void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D,
+                           int viewWidth,
+                           int viewHeight) {
+    auto dataToRender = getDataToRender();
+    if(dataToRender.empty())
         return;
     GLuint filterMethod = mUseInterpolation ? GL_LINEAR : GL_NEAREST;
-    std::lock_guard<std::mutex> lock(mMutex);
     OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     cl::CommandQueue queue = device->getCommandQueue();
 
@@ -44,7 +76,7 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, f
         Color::Cyan(),
     };
     int maxChannels = 0;
-    for(auto it : mDataToRender) {
+    for(auto it : dataToRender) {
         auto input = std::static_pointer_cast<Tensor>(it.second);
         int nrOfChannels = input->getShape()[2];
         maxChannels = std::max(nrOfChannels, maxChannels);
@@ -89,7 +121,7 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, f
     }
 
     cl::Kernel kernel(getOpenCLProgram(device), "renderToTexture");
-    for(auto it : mDataToRender) {
+    for(auto it : dataToRender) {
         auto input = std::static_pointer_cast<Tensor>(it.second);
         uint inputNr = it.first;
 
@@ -119,7 +151,7 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, f
         cl::ImageGL imageGL;
         std::vector<cl::Memory> v;
         GLuint textureID;
-        if(DeviceManager::isGLInteropEnabled()) {
+        if(device->isOpenGLInteropSupported()) {
             // Create OpenGL texture
             glGenTextures(1, &textureID);
             glBindTexture(GL_TEXTURE_2D, textureID);
@@ -166,7 +198,7 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, f
             cl::NullRange
         );
 
-        if(DeviceManager::isGLInteropEnabled()) {
+        if(device->isOpenGLInteropSupported()) {
             queue.enqueueReleaseGLObjects(&v);
             queue.finish();
         } else {
@@ -202,14 +234,13 @@ void HeatmapRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, f
     glEnable(GL_BLEND);
     //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC1_ALPHA);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    drawTextures(perspectiveMatrix, viewingMatrix, mode2D);
+    drawTextures(dataToRender, perspectiveMatrix, viewingMatrix, mode2D);
     glDisable(GL_BLEND);
 
 }
 
-void HeatmapRenderer::drawTextures(Matrix4f &perspectiveMatrix, Matrix4f &viewingMatrix, bool mode2D) {
-
-    for(auto it : mDataToRender) {
+void HeatmapRenderer::drawTextures(std::unordered_map<uint, std::shared_ptr<SpatialDataObject>> dataToRender, Matrix4f &perspectiveMatrix, Matrix4f &viewingMatrix, bool mode2D) {
+    for(auto it : dataToRender) {
         auto input = std::static_pointer_cast<Tensor>(it.second);
         uint inputNr = it.first;
         // Delete old VAO
@@ -264,25 +295,27 @@ void HeatmapRenderer::drawTextures(Matrix4f &perspectiveMatrix, Matrix4f &viewin
 
     activateShader();
 
+    setShaderUniform("window", 1.0f);
+    setShaderUniform("level", 0.5f);
+
     // This is the actual rendering
     for(auto& it : mTensorUsed) {
-        AffineTransformation::pointer transform;
-        if(mode2D) {
-            // If rendering is in 2D mode we skip any transformations
-            transform = AffineTransformation::New();
-        } else {
-            transform = SceneGraph::getAffineTransformationFromData(it.second);
+        Affine3f transform = Affine3f::Identity();
+        // If rendering is in 2D mode we skip any transformations
+        if(!mode2D) {
+            transform = SceneGraph::getEigenTransformFromData(it.second);
         }
 
         Vector3f spacing = it.second->getSpacing();
-        transform->getTransform().scale(spacing);
+        transform.scale(spacing);
 
         uint transformLoc = glGetUniformLocation(getShaderProgram(), "transform");
-        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform->getTransform().data());
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform.data());
         transformLoc = glGetUniformLocation(getShaderProgram(), "perspectiveTransform");
         glUniformMatrix4fv(transformLoc, 1, GL_FALSE, perspectiveMatrix.data());
         transformLoc = glGetUniformLocation(getShaderProgram(), "viewTransform");
         glUniformMatrix4fv(transformLoc, 1, GL_FALSE, viewingMatrix.data());
+        setShaderUniform("opacity", m_opacity);
 
         glBindTexture(GL_TEXTURE_2D, mTexturesToRender[it.first]);
         glBindVertexArray(mVAO[it.first]);
@@ -311,6 +344,56 @@ void HeatmapRenderer::setMaxOpacity(float opacity) {
 void HeatmapRenderer::setInterpolation(bool useInterpolation) {
     mUseInterpolation = useInterpolation;
     deleteAllTextures();
+}
+
+
+std::string HeatmapRenderer::attributesToString() {
+    std::stringstream ss;
+    ss << "Attribute disabled " << (isDisabled() ? "true" : "false") << "\n";
+    ss << "Attribute max-opacity " << mMaxOpacity << "\n";
+    ss << "Attribute min-confidence " << mMinConfidence << "\n";
+    if(!mColors.empty()) {
+        ss << "Attribute channel-colors";
+        for(auto color : mColors) {
+            ss << " \"" << color.first << "\" \"" << color.second.getName() << "\"";
+        }
+        ss << "\n";
+    }
+    ss << "Attribute interpolation " << (mUseInterpolation ? "true" : "false") << "\n";
+    if(!mHide.empty()) {
+        ss << "Attribute hidden-channels ";
+        for(auto channel : mHide) {
+            if(channel.second)
+                ss << channel.first << " ";
+        }
+        ss << "\n";
+    }
+
+    return ss.str();
+}
+
+float HeatmapRenderer::getMinConfidence() const {
+    return mMinConfidence;
+}
+
+float HeatmapRenderer::getMaxOpacity() const {
+    return mMaxOpacity;
+}
+
+bool HeatmapRenderer::getInterpolation() const {
+    return mUseInterpolation;
+}
+
+Color HeatmapRenderer::getChannelColor(uint channel) {
+    if(mColors.count(channel) == 0)
+        mColors[channel] = Color::Green();
+    return mColors[channel];
+}
+
+bool HeatmapRenderer::getChannelHidden(uint channel) {
+    if(mHide.count(channel) == 0)
+        return false;
+    return mHide[channel];
 }
 
 }

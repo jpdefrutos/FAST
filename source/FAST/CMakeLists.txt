@@ -1,5 +1,5 @@
 #### Add all subdirs
-fast_add_subdirectories(Algorithms Data Streamers Importers Exporters Visualization Tests Tools DataChannels)
+fast_add_subdirectories(Streamers Algorithms Data Importers Exporters Visualization Tests Tools DataChannels)
 fast_add_sources(
     Config.cpp
     Config.hpp
@@ -17,8 +17,6 @@ fast_add_sources(
     Utility.hpp
     SceneGraph.cpp
     SceneGraph.hpp
-    AffineTransformation.cpp
-    AffineTransformation.hpp
     OpenCLProgram.cpp
     OpenCLProgram.hpp
     Reporter.cpp
@@ -33,9 +31,10 @@ fast_add_sources(
     Attribute.cpp
     Attribute.hpp
     ProcessObjectRegistry.hpp
-    SmartPointers.hpp
     PipelineSynchronizer.cpp
     PipelineSynchronizer.hpp
+    DataStream.cpp
+    DataStream.hpp
 )
 if(FAST_MODULE_Visualization)
     fast_add_sources(
@@ -43,10 +42,8 @@ if(FAST_MODULE_Visualization)
         Pipeline.cpp
         PipelineEditor.hpp
         PipelineEditor.cpp
+        DataHub.cpp
+        DataHub.hpp
 	)
+    fast_add_python_interfaces(DataHub.hpp Pipeline.hpp)
 endif()
-fast_add_python_interfaces(
-	ProcessObject.i
-	numpy.i
-    Config.i
-)

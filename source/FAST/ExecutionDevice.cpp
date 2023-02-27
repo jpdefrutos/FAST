@@ -6,8 +6,8 @@
 #include "FAST/Config.hpp"
 
 #if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenCL/cl_gl.h>
-
+#include <CL/cl_gl.h>
+#include <OpenGL/OpenGL.h>
 #else
 #if _WIN32
 #else
@@ -77,8 +77,38 @@ cl::Device OpenCLDevice::getDevice() {
     return OpenCLDevice::getDevice(0);
 }
 
+OpenCLPlatformVendor OpenCLDevice::getPlatformVendor() {
+    std::string platformVendor = getPlatform().getInfo<CL_PLATFORM_VENDOR>();
+    OpenCLPlatformVendor retval;
+    if (platformVendor.find("Advanced Micro Devices") != std::string::npos || platformVendor.find("AMD") != std::string::npos) {
+        retval = PLATFORM_VENDOR_AMD;
+    } else if (platformVendor.find("Apple") != std::string::npos) {
+        retval = PLATFORM_VENDOR_APPLE;
+    } else if (platformVendor.find("Intel") != std::string::npos) {
+        retval = PLATFORM_VENDOR_INTEL;
+    } else if (platformVendor.find("NVIDIA") != std::string::npos) {
+        retval = PLATFORM_VENDOR_NVIDIA;
+    } else if(platformVendor.find("Portable Computing Language") != std::string::npos) {
+        retval = PLATFORM_VENDOR_POCL;
+	} else {
+        retval = PLATFORM_VENDOR_UNKNOWN;
+	}
+    return retval;
+}
+
+
 bool OpenCLDevice::isWritingTo3DTexturesSupported() {
+#ifdef WIN32
+    if(getPlatformVendor() == PLATFORM_VENDOR_NVIDIA) {
+        // 3D image writes on windows for nvidia is buggy, disable it
+        //reportWarning() << "Disabling 3D image writes because unstable with latest nvidia drivers on windows" << reportEnd();
+        return false;
+    } else {
+		return OpenCLDevice::getDevice(0).getInfo<CL_DEVICE_EXTENSIONS>().find("cl_khr_3d_image_writes") != std::string::npos;
+    }
+#else
     return OpenCLDevice::getDevice(0).getInfo<CL_DEVICE_EXTENSIONS>().find("cl_khr_3d_image_writes") != std::string::npos;
+#endif
 }
 
 OpenCLDevice::~OpenCLDevice() {
@@ -335,10 +365,11 @@ cl::Program OpenCLDevice::writeBinary(std::string filename, std::string buildOpt
 
     // Write cache file
     FILE * cacheFile = fopen(cacheFilename.c_str(), "w");
-    std::string timeStr = getModifiedDate(filename);
+    auto modifiedDate = getModifiedDate(filename);
+    std::string timeStr = modifiedDate + "\n";
     std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
-    timeStr += "-" + devices[0].getInfo<CL_DEVICE_NAME>() + "\n";
-    timeStr += "-" + buildOptions;
+    timeStr += devices[0].getInfo<CL_DEVICE_NAME>() + "\n";
+    timeStr += buildOptions;
     fwrite(timeStr.c_str(), sizeof(char), timeStr.size(), cacheFile);
     fclose(cacheFile);
 
@@ -389,32 +420,19 @@ cl::Program OpenCLDevice::buildProgramFromBinary(std::string filename, std::stri
         std::string cache(
             std::istreambuf_iterator<char>(cacheFile),
             (std::istreambuf_iterator<char>()));
+        auto lines = split(cache, "\n");
 
         bool outOfDate = true;
         bool wrongDeviceID = true;
         bool buildOptionsChanged = true;
-        const size_t pos = cache.find("-");
-        const size_t pos2 = cache.find("-", pos+1);
-        if(pos != std::string::npos && pos2 != std::string::npos) {
+        if(lines.size() >= 2) {
             // Get modification date of file
-            #ifdef WIN32
-            HANDLE hFile = CreateFile(filename.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-            FILETIME ftCreate, ftAccess, ftWrite;
-			SYSTEMTIME sysTime;
-            GetFileTime(hFile, &ftCreate, &ftAccess, &ftWrite);
-			FileTimeToSystemTime(&ftWrite, &sysTime);
-			char* buffer = new char[255];
-			sprintf(buffer, "%d%d%d%d%d", sysTime.wYear, sysTime.wMonth, sysTime.wDay, sysTime.wHour,sysTime.wMinute,sysTime.wSecond);
-			outOfDate = strcmp(buffer, cache.substr(0, pos).c_str()) != 0;
-			delete[] buffer;
-            #else
-            struct stat attrib; // create a file attribute structure
-            stat(filename.c_str(), &attrib);
-            outOfDate = strcmp(ctime(&(attrib.st_mtime)), cache.substr(0, pos).c_str()) != 0;
-            #endif
+            auto modifiedDate = getModifiedDate(filename);
+            outOfDate = modifiedDate != lines[0];
             std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
-            wrongDeviceID = cache.substr(pos+1, pos2-pos-2) != devices[0].getInfo<CL_DEVICE_NAME>();
-            buildOptionsChanged = cache.substr(pos2+1) != buildOptions;
+            wrongDeviceID = lines[1] != devices[0].getInfo<CL_DEVICE_NAME>();
+            if(lines.size() == 3)
+                buildOptionsChanged = lines[2] != buildOptions;
         }
 
         if(outOfDate || wrongDeviceID || buildOptionsChanged) {
@@ -468,6 +486,10 @@ cl::Program OpenCLDevice::getProgram(std::string name) {
 
 bool OpenCLDevice::hasProgram(std::string name) {
     return programNames.count(name) > 0;
+}
+
+bool OpenCLDevice::isOpenGLInteropSupported() {
+    return mGLContext != nullptr;
 }
 
 } // end namespace fast

@@ -4,12 +4,19 @@
 
 namespace fast {
 
-class VolumeRenderer : public Renderer {
+/**
+ * @brief Abstract base class for volume renderers
+ *
+ * @ingroup renderers
+ */
+class FAST_EXPORT VolumeRenderer : public Renderer {
     public:
-        typedef SharedPointer<VolumeRenderer> pointer;
+        typedef std::shared_ptr<VolumeRenderer> pointer;
         ~VolumeRenderer();
     protected:
-        virtual void draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) = 0;
+        virtual void
+        draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D, int viewWidth,
+             int viewHeight) = 0;
         VolumeRenderer();
         uint m_FBO = 0;
         uint m_texture = 0;

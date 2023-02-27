@@ -546,12 +546,14 @@ void MultigridGradientVectorFlow::setIterations(uint iterations) {
     if(iterations == 0)
         throw Exception("Number of iterations can't be zero in MultigridGradientVectorFlow.");
     mIterations = iterations;
+    setModified(true);
 }
 
 void MultigridGradientVectorFlow::setMuConstant(float mu) {
     if(mu > 0.2 || mu < 0)
         throw Exception("The constant mu must be larger than 0 and smaller than 0.2 in MultigridGradientVectorFlow.");
     mMu = mu;
+    setModified(true);
 }
 
 float MultigridGradientVectorFlow::getMuConstant() const {
@@ -566,13 +568,13 @@ void MultigridGradientVectorFlow::set32bitStorageFormat() {
     mUse16bitFormat = false;
 }
 
-MultigridGradientVectorFlow::MultigridGradientVectorFlow() {
+MultigridGradientVectorFlow::MultigridGradientVectorFlow(float mu, uint iterations, bool use16BitFormat) {
     createInputPort<Image>(0);
     createOutputPort<Image>(0);
     createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/GradientVectorFlow/MultigridGradientVectorFlow.cl");
-    mIterations = 10;
-    mMu = 0.1f;
-    mUse16bitFormat = true;
+    mIterations = iterations;
+    setMuConstant(mu);
+    mUse16bitFormat = use16BitFormat;
 }
 
 void MultigridGradientVectorFlow::execute() {
@@ -585,8 +587,7 @@ void MultigridGradientVectorFlow::execute() {
     }
 
     // Create output, currently only type float is output, not normalized 16 bit
-    Image::pointer output = getOutputData<Image>();
-    output->create(input->getSize(), TYPE_FLOAT, input->getNrOfChannels());
+    auto output = Image::create(input->getSize(), TYPE_FLOAT, input->getNrOfChannels());
     output->setSpacing(input->getSpacing());
     SceneGraph::setParentNode(output, input);
 
@@ -601,10 +602,11 @@ void MultigridGradientVectorFlow::execute() {
         }
         execute3DGVF(input, output, mIterations);
     }
+    addOutputData(0, output);
 }
 
-void MultigridGradientVectorFlow::execute3DGVF(SharedPointer<Image> input,
-        SharedPointer<Image> output, uint iterations) {
+void MultigridGradientVectorFlow::execute3DGVF(std::shared_ptr<Image> input,
+        std::shared_ptr<Image> output, uint iterations) {
     OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     OpenCLImageAccess::pointer inputAccess = input->getOpenCLImageAccess(ACCESS_READ, device);
     const Vector3f inputSpacing = input->getSpacing();
@@ -666,7 +668,7 @@ void MultigridGradientVectorFlow::execute3DGVF(SharedPointer<Image> input,
                 cl::NullRange
         );
     }
-    std::cout << "sqrMag created" << std::endl;
+    reportInfo() << "sqrMag created" << reportEnd();
 
     cl::Kernel addKernel(mProgram, "addTwoImages");
     float spacing = inputSpacing.x();
@@ -720,7 +722,7 @@ void MultigridGradientVectorFlow::execute3DGVF(SharedPointer<Image> input,
         }
 
     }
-    std::cout << "fx finished" << std::endl;
+    reportInfo() << "fx finished" << reportEnd();
     spacing = inputSpacing.y();
 
     // create fy and ry
@@ -774,7 +776,7 @@ void MultigridGradientVectorFlow::execute3DGVF(SharedPointer<Image> input,
 
     }
 
-    std::cout << "fy finished" << std::endl;
+    reportInfo() << "fy finished" << reportEnd();
     spacing = inputSpacing.z();
 
     // create fz and rz
@@ -828,7 +830,7 @@ void MultigridGradientVectorFlow::execute3DGVF(SharedPointer<Image> input,
 
     }
 
-    std::cout << "fz finished" << std::endl;
+    reportInfo() << "fz finished" << reportEnd();
 
 
     cl::Kernel finalizeKernel(mProgram, "MGGVFFinish");
@@ -866,7 +868,7 @@ void MultigridGradientVectorFlow::execute3DGVF(SharedPointer<Image> input,
         );
 
     }
-    std::cout << "MG GVF finished" << std::endl;
+    reportInfo() << "MG GVF finished" << reportEnd();
 }
 
 } // end namespace fast

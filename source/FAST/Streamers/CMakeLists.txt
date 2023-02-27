@@ -9,9 +9,18 @@ fast_add_sources(
     MeshFileStreamer.hpp
     ManualImageStreamer.cpp
     ManualImageStreamer.hpp
-    AffineTransformationFileStreamer.cpp
-    AffineTransformationFileStreamer.hpp
+    TransformFileStreamer.cpp
+    TransformFileStreamer.hpp
+    RandomAccessStreamer.cpp
+    RandomAccessStreamer.hpp
 )
+fast_add_python_interfaces(
+    Streamer.hpp
+    RandomAccessStreamer.hpp
+    FileStreamer.hpp
+    MeshFileStreamer.hpp
+)
+fast_add_python_shared_pointers(Streamer RandomAccessStreamer FileStreamer MeshFileStreamer)
 fast_add_process_object(ImageFileStreamer ImageFileStreamer.hpp)
 if(FAST_MODULE_OpenIGTLink)
     fast_add_sources(
@@ -31,20 +40,27 @@ if(FAST_MODULE_Visualization)
     fast_add_sources(
         MovieStreamer.cpp
         MovieStreamer.hpp
+        CameraStreamer.cpp
+        CameraStreamer.hpp
     )
     fast_add_test_sources(Tests/MovieStreamerTests.cpp)
+    fast_add_test_sources(Tests/CameraStreamerTests.cpp)
+    fast_add_process_object(MovieStreamer MovieStreamer.hpp)
+    fast_add_process_object(CameraStreamer CameraStreamer.hpp)
 endif()
 if(FAST_MODULE_Kinect)
     fast_add_sources(
         KinectStreamer.cpp
         KinectStreamer.hpp
     )
+    fast_add_process_object(KinectStreamer KinectStreamer.hpp)
 endif()
 if(FAST_MODULE_RealSense)
     fast_add_sources(
         RealSenseStreamer.cpp
         RealSenseStreamer.hpp
     )
+    fast_add_process_object(RealSenseStreamer RealSenseStreamer.hpp)
 endif()
 if(FAST_MODULE_Clarius)
     fast_add_sources(
@@ -63,7 +79,4 @@ endif()
 
 fast_add_test_sources(
     Tests/ImageFileStreamerTests.cpp
-)
-fast_add_python_interfaces(
-	ImageFileStreamer.i
 )

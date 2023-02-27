@@ -8,50 +8,79 @@
 
 namespace fast {
 
-SegmentationLabelRenderer::SegmentationLabelRenderer() {
-    createInputPort<Image>(0);
+void SegmentationLabelRenderer::loadAttributes() {
+    auto classTitles = getStringListAttribute("label-text");
+    for(int i = 0; i < classTitles.size(); i += 2) {
+        setLabelName(std::stoi(classTitles[i]), classTitles[i+1]);
+    }
+    auto classColors = getStringListAttribute("label-color");
+    for(int i = 0; i < classColors.size(); i += 2) {
+        setColor(std::stoi(classColors[i]), Color::fromString(classColors[i+1]));
+    }
+    setAreaThreshold(getFloatAttribute("area-threshold"));
+}
+
+void SegmentationLabelRenderer::setAreaThreshold(float threshold) {
+    m_areaThreshold = threshold;
+    setModified(true);
+}
+
+SegmentationLabelRenderer::SegmentationLabelRenderer(std::map<uint, std::string> labelNames, std::map<uint, Color> labelColors, float areaThreshold) {
+    createInputPort(0, "Image");
+    m_2Donly = true;
     mFontSize = 28;
+    setLabelNames(labelNames);
+    setColors(labelColors);
+    setAreaThreshold(areaThreshold);
 
     createShaderProgram({
                                 Config::getKernelSourcePath() + "/Visualization/SegmentationLabelRenderer/SegmentationLabelRenderer.vert",
                                 Config::getKernelSourcePath() + "/Visualization/SegmentationLabelRenderer/SegmentationLabelRenderer.frag",
                         });
+
+    createStringAttribute("label-text", "Label Text", "Text title of each class label", "");
+    createStringAttribute("label-color", "Label Colors", "Color of each class label", "");
+    createFloatAttribute("area-threshold", "Area threshold", "Only show labels for objects larger than this threshold. Area is in mm^2", m_areaThreshold);
 }
 
 
 void SegmentationLabelRenderer::execute() {
-    std::unique_lock<std::mutex> lock(mMutex);
-    if(m_disabled)
-        return;
-    if(mStop) {
-        return;
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        if(m_disabled)
+            return;
+        if(mStop) {
+            return;
+        }
     }
 
-    // Check if current images has not been rendered, if not wait
-    while(!mHasRendered && m_synchedRendering) {
-        mRenderedCV.wait(lock);
-    }
     // This simply gets the input data for each connection and puts it into a data structure
     for(uint inputNr = 0; inputNr < getNrOfInputConnections(); inputNr++) {
         if(hasNewInputData(inputNr)) {
             SpatialDataObject::pointer input = getInputData<SpatialDataObject>(inputNr);
 
-            mHasRendered = false;
-            mDataToRender[inputNr] = input;
-
-            auto regionProps = RegionProperties::New();
-            regionProps->setInputData(input);
-            m_regions[inputNr] = regionProps->updateAndGetOutputData<RegionList>();
+            {
+                std::lock_guard<std::mutex> lock(mMutex);
+                if(mHasRendered) {
+                    mHasRendered = false;
+                    mDataToRender[inputNr] = input;
+                    auto regionProps = RegionProperties::New();
+                    regionProps->setInputData(input);
+                    m_regions[inputNr] = regionProps->updateAndGetOutputData<RegionList>();
+                }
+            }
         }
     }
 }
 
-void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) {
-    std::lock_guard<std::mutex> lock(mMutex);
+void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar,
+                                     bool mode2D, int viewWidth,
+                                     int viewHeight) {
     if(!mode2D)
         throw Exception("SegmentationLabelRenderer is only implemented for 2D at the moment");
 
-    for(auto it : mDataToRender) {
+    auto dataToRender = getDataToRender();
+    for(auto it : dataToRender) {
         auto input = std::static_pointer_cast<Image>(it.second);
         if(input->getDataType() != TYPE_UINT8)
             throw Exception("Input to SegmentationLabelRenderer must be image of type UINT8");
@@ -82,15 +111,21 @@ void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewin
         mScales[inputNr] = scale;
         int height = scale*input->getHeight();
         Vector3f spacing = input->getSpacing();
+        // Compensate for anistropic spacing, (have to use isotropic spacing for text image)
+        float spacingScale = spacing.y() / spacing.x();
+        height = spacingScale*height;
 
         // create the QImage and draw txt into it
         QImage textimg(width, height, QImage::Format_RGBA8888);
         textimg.fill(QColor(0, 0, 0, 0));
         QPainter painter(&textimg);
         float pixelArea = spacing.x()*spacing.y();
-        for(auto& region : m_regions[inputNr]->getAccess(ACCESS_READ)->getData()) {
+        std::unique_lock<std::mutex> lock(mMutex);
+        auto regionsCopy = m_regions;
+        lock.unlock();
+        for(auto& region : regionsCopy[inputNr]->get()) {
 
-            if(region.area*pixelArea < 1.0f)
+            if(region.pixelCount * pixelArea < m_areaThreshold) // If object to small.. (area in mm^2)
                 continue;
 
             // If no label name has been set. Skip it
@@ -99,12 +134,12 @@ void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewin
 
             float size = 1.0f;
             if(m_dynamicSize) {
-                size = 1.0f + 0.01f*(region.area*pixelArea - 1.0f);
+                size = 1.0f + 0.01f*(region.pixelCount * (spacing.x() * spacing.x()) - 1.0f);
             } else {
                 size = m_textHeightInMM;
             }
 
-            const int textHeightInPixels = size / (spacing.y()/scale);
+            const int textHeightInPixels = size / (spacing.x()/scale);
 
             QFont font = QApplication::font();
             font.setPixelSize(textHeightInPixels);
@@ -126,11 +161,11 @@ void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewin
             // Determine position
             Vector2f position;
             if(m_centerPosition) {
-                position.x() = region.centroid.x()*scale - textWidth * 0.5f;
-                position.y() = region.centroid.y()*scale + textHeight * 0.5f;
+                position.x() = region.centroid.x()/spacing.x()*scale - textWidth * 0.5f;
+                position.y() = region.centroid.y()/spacing.y()*scale*spacingScale + textHeight * 0.5f;
             } else {
-                position.x() = region.centroid.x()*scale;
-                position.y() = region.centroid.y()*scale + textHeight;
+                position.x() = region.centroid.x()/spacing.x()*scale;
+                position.y() = region.centroid.y()/spacing.y()*scale*spacingScale + textHeight;
             }
 
             // Draw it
@@ -207,20 +242,20 @@ void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewin
     for(auto it : mImageUsed) {
         const uint inputNr = it.first;
 
-        AffineTransformation::pointer transform;
-        if(mode2D) {
-            // If rendering is in 2D mode we skip any transformations
-            transform = AffineTransformation::New();
-        } else {
-            transform = SceneGraph::getAffineTransformationFromData(it.second);
+
+        Affine3f transform = Affine3f::Identity();
+        // If rendering is in 2D mode we skip any transformations
+        if(!mode2D) {
+            transform = SceneGraph::getEigenTransformFromData(it.second);
         }
 
-        transform->getTransform().scale(it.second->getSpacing()/mScales[inputNr]);
+        auto spacing = it.second->getSpacing();
+        transform.scale(Vector3f(spacing.x(), spacing.x(), 1.0f)/mScales[inputNr]);
 
         // Get width and height of texture
         glBindTexture(GL_TEXTURE_2D, mTexturesToRender[inputNr]);
         uint transformLoc = glGetUniformLocation(getShaderProgram(), "transform");
-        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform->getTransform().data());
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform.data());
         transformLoc = glGetUniformLocation(getShaderProgram(), "perspectiveTransform");
         glUniformMatrix4fv(transformLoc, 1, GL_FALSE, perspectiveMatrix.data());
         transformLoc = glGetUniformLocation(getShaderProgram(), "viewTransform");
@@ -238,13 +273,16 @@ void SegmentationLabelRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewin
     glFinish(); // Fixes random crashes in OpenGL on NVIDIA windows due to some interaction with the line renderer. Suboptimal solution as glFinish is a blocking sync operation.
 }
 
-void SegmentationLabelRenderer::setLabelName(int label, std::string name) {
+void SegmentationLabelRenderer::setLabelName(uint label, std::string name) {
     m_labelNames[label] = name;
+    setModified(true);
 }
 
-void SegmentationLabelRenderer::setLabelColor(int label, Color color) {
-    m_labelColors[label] = color;
+void SegmentationLabelRenderer::setLabelNames(std::map<uint, std::string> labelNames) {
+    m_labelNames = labelNames;
+    setModified(true);
 }
+
 
 
 } // end namespace fast

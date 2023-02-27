@@ -1,5 +1,4 @@
-#ifndef MANUAL_IMAGE_STREAMER_HPP
-#define MANUAL_IMAGE_STREAMER_HPP
+#pragma once
 
 
 #include "FAST/Streamers/Streamer.hpp"
@@ -11,15 +10,15 @@ namespace fast {
 class Image;
 
 class FAST_EXPORT  ManualImageStreamer : public Streamer {
-    FAST_OBJECT(ManualImageStreamer)
+    FAST_PROCESS_OBJECT(ManualImageStreamer)
     public:
-    	void addImage(SharedPointer<Image> image);
-        void addSequence(std::vector<SharedPointer<Image>> images);
+        FAST_CONSTRUCTOR(ManualImageStreamer)
+    	void addImage(std::shared_ptr<Image> image);
+        void addSequence(std::vector<std::shared_ptr<Image>> images);
         void setStartNumber(uint startNumber);
         void setStepSize(uint step);
         void setZeroFilling(uint digits);
         void setNumberOfReplays(uint replays);
-        void setStreamingMode(StreamingMode mode);
         void enableLooping();
         void disableLooping();
         /**
@@ -36,7 +35,6 @@ class FAST_EXPORT  ManualImageStreamer : public Streamer {
 
         ~ManualImageStreamer();
     private:
-        ManualImageStreamer();
 
         // Update the streamer if any parameters have changed
         void execute();
@@ -51,9 +49,7 @@ class FAST_EXPORT  ManualImageStreamer : public Streamer {
         uint mSleepTime;
         uint mStepSize;
 
-        std::vector<std::vector<SharedPointer<Image>>> mImages;
+        std::vector<std::vector<std::shared_ptr<Image>>> mImages;
 };
 
 } // end namespace fast
-
-#endif

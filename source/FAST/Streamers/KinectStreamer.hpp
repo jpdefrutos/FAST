@@ -1,5 +1,4 @@
-#ifndef FAST_KINECT_STREAMER_HPP_
-#define FAST_KINECT_STREAMER_HPP_
+#pragma once
 
 #include "FAST/ProcessObject.hpp"
 #include "Streamer.hpp"
@@ -20,6 +19,8 @@ class MeshVertex;
  *
  * The RGB camera and depth stream are registered so that a color value for each point in the
  * point cloud is established.
+ *
+ * Default streaming mode is StreamingMode::NewestFrameOnly
  *
  * Output port 0: Registered RGB image
  * Output port 1: Registered depth image
@@ -77,5 +78,3 @@ class FAST_EXPORT KinectStreamer : public Streamer {
 };
 
 }
-
-#endif

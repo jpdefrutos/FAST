@@ -1,9 +1,8 @@
-#ifndef RUNTIMEMEASUREMENTMANAGER_HPP_
-#define RUNTIMEMEASUREMENTMANAGER_HPP_
+#pragma once
 
 #include <string>
 #include <map>
-#include "CL/OpenCL.hpp"
+#include <FAST/OpenCL.hpp>
 #include "RuntimeMeasurement.hpp"
 #include <chrono>
 #include <memory>
@@ -11,9 +10,16 @@
 
 namespace fast {
 
+/**
+ * @brief Manages multiple runtime measurements
+ *
+ * @sa RuntimeMeasurement
+ */
 class FAST_EXPORT  RuntimeMeasurementsManager : public Object {
 	FAST_OBJECT(RuntimeMeasurementsManager)
 public:
+    void setWarmupRounds(int rounds);
+	int getWarmupRounds() const;
 	void enable();
 	void disable();
 	bool isEnabled();
@@ -38,6 +44,7 @@ public:
 private:
 	RuntimeMeasurementsManager();
 	bool enabled;
+	int m_warmupRounds = 0;
 	std::map<std::string, RuntimeMeasurement::pointer> timings;
 	std::map<std::string, unsigned int> numberings;
 	std::map<std::string, cl::Event> startEvents;
@@ -45,5 +52,3 @@ private:
 };
 
 } //namespace fast
-
-#endif /* RUNTIMEMEASUREMENTMANAGER_HPP_ */

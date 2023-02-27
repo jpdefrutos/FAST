@@ -16,10 +16,16 @@ fast_add_sources(
     CameraAccess.hpp
     TensorAccess.cpp
     TensorAccess.hpp
+    BoundingBoxSetAccess.cpp
+    BoundingBoxSetAccess.hpp
+    OpenGLTextureAccess.cpp
+    OpenGLTextureAccess.hpp
 )
+fast_add_python_interfaces(MeshAccess.hpp MeshOpenCLAccess.hpp VertexBufferObjectAccess.hpp TensorAccess.hpp)
 if(FAST_MODULE_WholeSlideImaging)
 fast_add_sources(
     ImagePyramidAccess.cpp 
     ImagePyramidAccess.hpp
 )
+fast_add_python_interfaces(ImagePyramidAccess.hpp)
 endif()

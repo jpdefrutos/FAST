@@ -7,84 +7,85 @@
 #include <QGLContext>
 #include <FAST/Visualization/Window.hpp>
 #include <FAST/Visualization/View.hpp>
-#if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenCL/cl_gl.h>
-#include <OpenGL/gl.h>
+#include <FAST/Algorithms/ImageSharpening/ImageSharpening.hpp>
+#ifdef WIN32
+#elif defined(__APPLE__) || defined(__MACOSX)
 #include <OpenGL/OpenGL.h>
 #else
-#if _WIN32
-#include <GL/gl.h>
-#include <CL/cl_gl.h>
-#else
-#include <CL/cl_gl.h>
-
+#include <GL/glx.h>
 #endif
-#endif
-
 
 namespace fast {
 
 void ImagePyramidRenderer::clearPyramid() {
     // Clear buffer. Useful when processing a new image
+    // Delete all GL data
+    for(auto item : mVAO) {
+        glDeleteVertexArrays(1, &item.second);
+    }
+    mVAO.clear();
+    for(auto item : mVBO) {
+        glDeleteBuffers(1, &item.second);
+    }
+    mVBO.clear();
+    for(auto item : mEBO) {
+        glDeleteBuffers(1, &item.second);
+    }
+    mEBO.clear();
+    for(auto texture : mTexturesToRender) {
+        glDeleteTextures(1, &texture.second);
+    }
     mTexturesToRender.clear();
-    mDataToRender.clear();
+    clearDataToRender();
 }
 
 ImagePyramidRenderer::~ImagePyramidRenderer() {
-    m_stop = true;
+    reportInfo() << "Destroying ImagePyramidRenderer in THREAD: " << std::this_thread::get_id() << reportEnd();
+    {
+        std::unique_lock<std::mutex> lock(m_tileQueueMutex);
+        m_stop = true;
+    }
     m_queueEmptyCondition.notify_one();
-    m_bufferThread->join();
-    reportInfo() << "Buffer thread in ImagePyramidRenderer stopped" << reportEnd();
+    if(m_bufferThread) {
+        m_bufferThread->join();
+        reportInfo() << "Buffer thread in ImagePyramidRenderer stopped" << reportEnd();
+    }
+    clearPyramid(); // Free memory
+    reportInfo() << "Pyramid cleared" << reportEnd();
 }
 
-ImagePyramidRenderer::ImagePyramidRenderer() : Renderer() {
-    createInputPort<ImagePyramid>(0, false);
-    createOpenCLProgram(Config::getKernelSourcePath() + "/Visualization/ImagePyramidRenderer/ImagePyramidRenderer.cl", "3D");
-    createOpenCLProgram(Config::getKernelSourcePath() + "/Visualization/ImagePyramidRenderer/VeryLargeImageRenderer2D.cl", "2D");
+ImagePyramidRenderer::ImagePyramidRenderer(bool sharpening) : Renderer() {
+    createInputPort(0, "ImagePyramid", "", false);
+    m_2Donly = true;
     mIsModified = true;
     m_stop = false;
-    mWindow = -1;
-    mLevel = -1;
     m_currentLevel = -1;
-    createFloatAttribute("window", "Intensity window", "Intensity window", -1);
-    createFloatAttribute("level", "Intensity level", "Intensity level", -1);
+    createBooleanAttribute("sharpening", "Sharpening", "Post processing using image sharpening", m_postProcessingSharpening);
     createShaderProgram({
                                 Config::getKernelSourcePath() + "/Visualization/ImagePyramidRenderer/ImagePyramidRenderer.vert",
                                 Config::getKernelSourcePath() + "/Visualization/ImagePyramidRenderer/ImagePyramidRenderer.frag",
                         });
 
+    m_sharpening = ImageSharpening::New();
+    m_sharpening->setStandardDeviation(1.5f);
+    setSharpening(sharpening);
 }
 
-void ImagePyramidRenderer::setIntensityLevel(float level) {
-    mLevel = level;
-}
-
-float ImagePyramidRenderer::getIntensityLevel() {
-    return mLevel;
-}
-
-void ImagePyramidRenderer::setIntensityWindow(float window) {
-    if (window <= 0)
-        throw Exception("Intensity window has to be above 0.");
-    mWindow = window;
-}
-
-float ImagePyramidRenderer::getIntensityWindow() {
-    return mWindow;
-}
 
 void ImagePyramidRenderer::loadAttributes() {
-    mWindow = getFloatAttribute("window");
-    mLevel = (getFloatAttribute("level"));
+    setSharpening(getBooleanAttribute("sharpening"));
 }
 
-void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) {
-    if(mDataToRender.empty())
+void
+ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D,
+                           int viewWidth,
+                           int viewHeight) {
+    auto dataToRender = getDataToRender();
+    if(dataToRender.empty())
         return;
 
     if(!m_bufferThread) {
         // Create thread to load patches
-#ifdef WIN32
         // Create a GL context for the thread which is sharing with the context of the view
         auto context = new QGLContext(View::getGLFormat(), m_view);
         context->create(m_view->context());
@@ -96,6 +97,7 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
             throw Exception("The custom Qt GL context is not sharing!");
 
         context->makeCurrent();
+#ifdef WIN32
         auto nativeContextHandle = wglGetCurrentContext();
         context->doneCurrent();
         m_view->context()->makeCurrent();
@@ -103,17 +105,22 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
         
         m_bufferThread = std::make_unique<std::thread>([this, dc, nativeContextHandle]() {
             wglMakeCurrent(dc, nativeContextHandle);
-#else
-        m_bufferThread = std::make_unique<std::thread>([this]() {
-            // Create a GL context for the thread which is sharing with the context of the view
-            auto context = new QGLContext(View::getGLFormat(), m_view);
-            context->create(m_view->context());
-            if(!context->isValid())
-                throw Exception("The custom Qt GL context is invalid!");
+#elif defined(__APPLE__)
+        auto nativeContextHandle = CGLGetCurrentContext();
+        context->doneCurrent();
+        m_view->context()->makeCurrent();
 
-            if(!context->isSharing())
-                throw Exception("The custom Qt GL context is not sharing!");
-            context->makeCurrent();
+        m_bufferThread = std::make_unique<std::thread>([this, nativeContextHandle]() {
+            CGLSetCurrentContext(nativeContextHandle);
+#else
+        auto nativeContextHandle = glXGetCurrentContext();
+        auto drawable = glXGetCurrentDrawable();
+        auto display = glXGetCurrentDisplay();
+        context->doneCurrent();
+        m_view->context()->makeCurrent();
+
+        m_bufferThread = std::make_unique<std::thread>([this, display, drawable, nativeContextHandle]() {
+            glXMakeCurrent(display, drawable, nativeContextHandle);
 #endif
             uint64_t memoryUsage = 0;
             while(true) {
@@ -136,6 +143,8 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
                 if(mTexturesToRender.count(tileID) > 0)
                     continue;
 
+                //std::cout << "Loading tile " << tileID << " queue size: " << m_tileQueue.size() << std::endl;
+
                 // Create texture
                 auto parts = split(tileID, "_");
                 if(parts.size() != 3)
@@ -145,11 +154,24 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
                 int tile_x = std::stoi(parts[1]);
                 int tile_y = std::stoi(parts[2]);
                 //std::cout << "Creating texture for tile " << tile_x << " " << tile_y << " at level " << level << std::endl;
-                ImagePyramidPatch tile;
+                Image::pointer tile;
                 {
                     auto access = m_input->getAccess(ACCESS_READ);
-                    tile = access->getPatch(level, tile_x, tile_y);
+                    try {
+                        tile = access->getPatchAsImage(level, tile_x, tile_y, false);
+                    } catch(Exception &e) {
+                        //reportWarning() << "Error occured while trying to open patch " << tile_x << " " << tile_y << reportEnd();
+                        // Tile was missing, just skip it..
+                        std::lock_guard<std::mutex> lock(m_tileQueueMutex);
+                        mTexturesToRender[tileID] = 0;
+                        continue;
+                    }
+                    if(m_postProcessingSharpening) {
+                        m_sharpening->setInputData(tile);
+                        tile = m_sharpening->updateAndGetOutputData<Image>();
+                    }
                 }
+                auto tileAccess = tile->getImageAccess(ACCESS_READ);
                 // Copy data from CPU to GL texture
                 GLuint textureID;
                 glGenTextures(1, &textureID);
@@ -163,20 +185,35 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
                 // WSI data from openslide is stored as ARGB, need to handle this here: BGRA and reverse
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA, tile.width, tile.height, 0, GL_BGRA, GL_UNSIGNED_BYTE,
-                             tile.data.get());
+                if(m_input->isBGRA()) {
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA, tile->getWidth(), tile->getHeight(), 0, GL_BGRA,
+                                 GL_UNSIGNED_BYTE,
+                                 tileAccess->get());
+                } else {
+                    if(tile->getNrOfChannels() == 3) {
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGB, tile->getWidth(), tile->getHeight(), 0, GL_RGB,
+                                     GL_UNSIGNED_BYTE,
+                                     tileAccess->get());
+                    } else if(tile->getNrOfChannels() == 4) {
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA, tile->getWidth(), tile->getHeight(), 0, GL_RGBA,
+                                     GL_UNSIGNED_BYTE,
+                                     tileAccess->get());
+                    }
+                }
                 GLint compressedImageSize = 0;
                 glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_COMPRESSED_IMAGE_SIZE, &compressedImageSize);
                 glBindTexture(GL_TEXTURE_2D, 0);
-                glFinish();
+                glFinish(); // Make sure texture is done before adding it
 
-                mTexturesToRender[tileID] = textureID;
+                {
+                    std::lock_guard<std::mutex> lock(m_tileQueueMutex);
+					mTexturesToRender[tileID] = textureID;
+                }
                 memoryUsage += compressedImageSize;
                 //std::cout << "Texture cache in ImagePyramidRenderer using " << (float)memoryUsage / (1024 * 1024) << " MB" << std::endl;
             }
         });
     }
-    std::lock_guard<std::mutex> lock(mMutex);
 
     Vector4f bottom_left = (perspectiveMatrix*viewingMatrix).inverse()*Vector4f(-1,-1,0,1);
     Vector4f top_right = (perspectiveMatrix*viewingMatrix).inverse()*Vector4f(1,1,0,1);
@@ -184,49 +221,63 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
     float height = std::fabs(top_right.y() - bottom_left.y());
     //std::cout << "Viewing coordinates:" << bottom_left.transpose() << " " <<  top_right.transpose() << std::endl;
     //std::cout << "Current Size:" << width << " " <<  height << std::endl;
-    int offset_x = bottom_left.x();
-    int offset_y = top_right.y();
+    float offset_x = bottom_left.x();
+    float offset_y = top_right.y();
     //std::cout << "Offset x:" << offset_x << std::endl;
     //std::cout << "Offset y:" << offset_y << std::endl;
 
-    m_input = std::static_pointer_cast<ImagePyramid>(mDataToRender[0]);
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        m_input = std::static_pointer_cast<ImagePyramid>(dataToRender[0]);
+    }
+
+    Vector3f spacing = m_input->getSpacing();
+    offset_x *= 1.0f/spacing.x();
+    offset_y *= 1.0f/spacing.y();
+    width *= 1.0f/spacing.x();
+    height *= 1.0f/spacing.y();
+    // Determine which level to use
+    // If nr of pixels in viewport is larger than the current width and height of view, than increase the magnification
     int fullWidth = m_input->getFullWidth();
     int fullHeight = m_input->getFullHeight();
-    //std::cout << "scaling: " << fullWidth/width << std::endl;
-    int levelToUse = m_input->getNrOfLevels() - (int)round(std::log(fullWidth/width)) - 1;
-    if(width > fullWidth)
-        levelToUse = m_input->getNrOfLevels()-1;
-    if(levelToUse < 0)
-        levelToUse = 0;
-    //std::cout << "Current view size: " << width << " " << height << ", level size: " << m_input->getLevelWidth(levelToUse) << " " << m_input->getLevelHeight(levelToUse) << " viewport: " << m_view->width() << " " << m_view->height() << std::endl;
-    if(m_currentLevel != levelToUse) {
-        // Level change, clear cache
+    int levelToUse = 0;
+    int level = m_input->getNrOfLevels();
+    do {
+        level = level - 1;
+        int levelWidth = m_input->getLevelWidth(level);
+        int levelHeight = m_input->getLevelHeight(level);
+
+        // Percentage of full WSI shown currently
+        float percentageShownX = (float)width / fullWidth;
+        float percentageShownY = (float)height / fullHeight;
+        // With current level, do we have have enough pixels to fill the view?
+        if(percentageShownX * levelWidth > m_view->width() && percentageShownY * levelHeight > m_view->height()) {
+            // If yes, stop here
+            levelToUse = level;
+            break;
+        } else {
+            // If not, increase the magnification 
+            continue;
+        }
+    } while(level > 0);
+    if(m_currentLevel != levelToUse && m_currentLevel != -1) {
+        // Level change, clear queue
         std::lock_guard<std::mutex> lock(m_tileQueueMutex);
         m_tileQueue.clear();
+        //std::cout << "Queue cleared!" << std::endl;
     }
     m_currentLevel = levelToUse;
-    //std::cout << "Level to use: " << levelToUse << std::endl;
-    //std::cout << "Levels total:" << m_input->getNrOfLevels() << std::endl;
-
-    // Clear dirty patches
-    /*
-    for(auto&& patch : m_input->getDirtyPatches()) {
-        mTexturesToRender.erase(patch);
-    }
-    m_input->clearDirtyPatches();
-    */
 
     activateShader();
 
     // This is the actual rendering
-    AffineTransformation::pointer transform;
-    // If rendering is in 2D mode we skip any transformations
-    transform = AffineTransformation::New();
+    Affine3f transform = Affine3f::Identity();
 
-    //transform->getTransform().scale(it.second->getSpacing());
+    transform.scale(spacing);
+
 
     uint transformLoc = glGetUniformLocation(getShaderProgram(), "transform");
-    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform->getTransform().data());
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform.data());
     transformLoc = glGetUniformLocation(getShaderProgram(), "perspectiveTransform");
     glUniformMatrix4fv(transformLoc, 1, GL_FALSE, perspectiveMatrix.data());
     transformLoc = glGetUniformLocation(getShaderProgram(), "viewTransform");
@@ -235,23 +286,31 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
     for(int level = m_input->getNrOfLevels()-1; level >= levelToUse; level--) {
         const int levelWidth = m_input->getLevelWidth(level);
         const int levelHeight = m_input->getLevelHeight(level);
-        const int mTiles = m_input->getLevelPatches(level);
-        const float mCurrentTileScale = (float)fullWidth/levelWidth;
+        const int mTilesX = m_input->getLevelTilesX(level);
+        const int mTilesY = m_input->getLevelTilesY(level);
+        const int tileWidth = m_input->getLevelTileWidth(level);
+        const int tileHeight = m_input->getLevelTileHeight(level);
+        const float mCurrentTileScale = m_input->getLevelScale(level);
 
-        for(int tile_x = 0; tile_x < mTiles; ++tile_x) {
-            for(int tile_y = 0; tile_y < mTiles; ++tile_y) {
+        for(int tile_x = 0; tile_x < mTilesX; ++tile_x) {
+            for(int tile_y = 0; tile_y < mTilesY; ++tile_y) {
                 const std::string tileString =
                         std::to_string(level) + "_" + std::to_string(tile_x) + "_" + std::to_string(tile_y);
 
-                int tile_offset_x = tile_x * (int) std::floor((float) levelWidth / mTiles);
-                int tile_offset_y = tile_y * (int) std::floor((float) levelHeight / mTiles);
+                float tile_offset_x = tile_x * tileWidth;
+                float tile_offset_y = tile_y * tileHeight;
 
-                int tile_width = std::floor(((float) levelWidth / mTiles));
-                if(tile_x == mTiles - 1)
+                float tile_width = tileWidth;
+                if(tile_x == mTilesX - 1)
                     tile_width = levelWidth - tile_offset_x;
-                int tile_height = std::floor((float) levelHeight / mTiles);
-                if(tile_y == mTiles - 1)
+                float tile_height = tileHeight;
+                if(tile_y == mTilesY - 1)
                     tile_height = levelHeight - tile_offset_y;
+
+                //tile_width *= spacing.x();
+                //tile_height *= spacing.y();
+                //tile_offset_x *= spacing.x();
+                //tile_offset_y *= spacing.y();
 
                 // Only process visible patches
                 // Fully contained and partly
@@ -278,78 +337,84 @@ void ImagePyramidRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatr
                 ))
                     continue;
 
+
                 // Is patch in cache?
-                if(mTexturesToRender.count(tileString) == 0) {
+                bool textureReady = false;
+                uint textureID;
+                {
+					std::lock_guard<std::mutex> lock(m_tileQueueMutex);
+                    textureReady = mTexturesToRender.count(tileString) > 0;
+                }
+                if(!textureReady) {
                     // Add to queue if not in cache
                     {
                         std::lock_guard<std::mutex> lock(m_tileQueueMutex);
-                        m_tileQueue.push_back(tileString);
+                        // Remove any duplicates first
+                        m_tileQueue.remove(tileString); // O(n) time complexity..
+						m_tileQueue.push_back(tileString);
+                        //std::cout << "Added tile " << tileString << " to queue" << std::endl;
                     }
                     m_queueEmptyCondition.notify_one();
                     continue;
+                } else {
+                    textureID = mTexturesToRender[tileString];
                 }
 
-                // Delete old VAO
-                if(mVAO.count(tileString) > 0)
-                    glDeleteVertexArrays(1, &mVAO[tileString]);
-                // Create VAO
-                uint VAO_ID;
-                glGenVertexArrays(1, &VAO_ID);
-                mVAO[tileString] = VAO_ID;
-                glBindVertexArray(VAO_ID);
+                if(textureID == 0) // This tile was missing or something, just skip it
+                    continue;
 
-                // Create VBO
-                // Get width and height in mm
-                //std::cout << "Creating vertices for " << tile_x << " " << tile_y << std::endl;
-                //std::cout << "Tile position: " << tile_offset_x*mCurrentTileScale << " " << tile_offset_x*mCurrentTileScale + tile_width*mCurrentTileScale << std::endl;
-                //std::cout << "Tile position: " << tile_offset_y*mCurrentTileScale << " " << tile_offset_y*mCurrentTileScale + tile_height*mCurrentTileScale << std::endl;
-                float vertices[] = {
-                        // vertex: x, y, z; tex coordinates: x, y
-                        tile_offset_x * mCurrentTileScale, (tile_offset_y + tile_height) * mCurrentTileScale, 0.0f,
-                        0.0f, 1.0f,
-                        (tile_offset_x + tile_width) * mCurrentTileScale,
-                        (tile_offset_y + tile_height) * mCurrentTileScale, 0.0f, 1.0f, 1.0f,
-                        (tile_offset_x + tile_width) * mCurrentTileScale, tile_offset_y * mCurrentTileScale, 0.0f, 1.0f,
-                        0.0f,
-                        tile_offset_x * mCurrentTileScale, tile_offset_y * mCurrentTileScale, 0.0f, 0.0f, 0.0f,
-                };
-                // Delete old VBO
-                if(mVBO.count(tileString) > 0)
-                    glDeleteBuffers(1, &mVBO[tileString]);
-                uint VBO;
-                glGenBuffers(1, &VBO);
-                mVBO[tileString] = VBO;
-                glBindBuffer(GL_ARRAY_BUFFER, VBO);
-                glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *) 0);
-                glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *) (3 * sizeof(float)));
-                glEnableVertexAttribArray(0);
-                glEnableVertexAttribArray(1);
+                if(mVAO.count(tileString) == 0) {
+                    // Create VAO
+                    uint VAO_ID;
+                    glGenVertexArrays(1, &VAO_ID);
+                    mVAO[tileString] = VAO_ID;
+                    glBindVertexArray(VAO_ID);
 
-                // Delete old EBO
-                if(mEBO.count(tileString) > 0)
-                    glDeleteBuffers(1, &mEBO[tileString]);
-                // Create EBO
-                uint EBO;
-                glGenBuffers(1, &EBO);
-                mEBO[tileString] = EBO;
-                uint indices[] = {  // note that we start from 0!
-                        0, 1, 3,   // first triangle
-                        1, 2, 3    // second triangle
-                };
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-                glBindVertexArray(0);
+                    // Create VBO
+                    // Get width and height in mm
+                    //std::cout << "Creating vertices for " << tile_x << " " << tile_y << std::endl;
+                    //std::cout << "Tile position: " << tile_offset_x*mCurrentTileScale << " " << tile_offset_x*mCurrentTileScale + tile_width*mCurrentTileScale << std::endl;
+                    //std::cout << "Tile position: " << tile_offset_y*mCurrentTileScale << " " << tile_offset_y*mCurrentTileScale + tile_height*mCurrentTileScale << std::endl;
+                    float vertices[] = {
+                            // vertex: x, y, z; tex coordinates: x, y
+                            tile_offset_x * mCurrentTileScale, (tile_offset_y + tile_height) * mCurrentTileScale,
+                            -(float)level-1,
+                            0.0f, 1.0f,
+                            (tile_offset_x + tile_width) * mCurrentTileScale,
+                            (tile_offset_y + tile_height) * mCurrentTileScale, -(float)level-1, 1.0f, 1.0f,
+                            (tile_offset_x + tile_width) * mCurrentTileScale, tile_offset_y * mCurrentTileScale, -(float)level-1,
+                            1.0f,
+                            0.0f,
+                            tile_offset_x * mCurrentTileScale, tile_offset_y * mCurrentTileScale, -(float)level-1, 0.0f, 0.0f,
+                    };
+                    uint VBO;
+                    glGenBuffers(1, &VBO);
+                    mVBO[tileString] = VBO;
+                    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+                    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+                    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *) 0);
+                    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *) (3 * sizeof(float)));
+                    glEnableVertexAttribArray(0);
+                    glEnableVertexAttribArray(1);
 
-                if(mTexturesToRender.count(tileString) == 0)
-                    throw Exception("ERROR! Texture doesn't exist");
+                    // Create EBO
+                    uint EBO;
+                    glGenBuffers(1, &EBO);
+                    mEBO[tileString] = EBO;
+                    uint indices[] = {  // note that we start from 0!
+                            0, 1, 3,   // first triangle
+                            1, 2, 3    // second triangle
+                    };
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+                    glBindVertexArray(0);
+                }
 
-                glBindTexture(GL_TEXTURE_2D, mTexturesToRender[tileString]);
+                glBindTexture(GL_TEXTURE_2D, textureID);
                 glBindVertexArray(mVAO[tileString]);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 glBindTexture(GL_TEXTURE_2D, 0);
                 glBindVertexArray(0);
-                glFinish();
             }
         }
     }
@@ -360,5 +425,12 @@ void ImagePyramidRenderer::drawTextures(Matrix4f &perspectiveMatrix, Matrix4f &v
 
 }
 
+void ImagePyramidRenderer::setSharpening(bool sharpening) {
+    m_postProcessingSharpening = sharpening;
+}
+
+bool ImagePyramidRenderer::getSharpening() const {
+    return m_postProcessingSharpening;
+}
 
 } // end namespace fast

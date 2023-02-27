@@ -2,7 +2,7 @@
 #include "FAST/Visualization/TriangleRenderer/TriangleRenderer.hpp"
 #include "FAST/Testing.hpp"
 #include "FAST/Importers/MetaImageImporter.hpp"
-#include "FAST/Algorithms/GaussianSmoothingFilter/GaussianSmoothingFilter.hpp"
+#include "FAST/Algorithms/GaussianSmoothing/GaussianSmoothing.hpp"
 #include "FAST/Visualization/SliceRenderer/SliceRenderer.hpp"
 #include "FAST/Algorithms/SurfaceExtraction/SurfaceExtraction.hpp"
 #include "FAST/Visualization/ImageRenderer/ImageRenderer.hpp"
@@ -24,13 +24,13 @@ TEST_CASE("Pipeline A (static)", "[fast][benchmark][visual]") {
     importer->setFilename(Config::getTestDataPath()+"/US/Ball/US-3Dt_50.mhd");
     importer->enableRuntimeMeasurements();
 
-    GaussianSmoothingFilter::pointer filter = GaussianSmoothingFilter::New();
+    GaussianSmoothing::pointer filter = GaussianSmoothing::New();
     filter->enableRuntimeMeasurements();
     filter->setInputConnection(importer->getOutputPort());
     filter->setMaskSize(5);
     filter->setStandardDeviation(2.0);
 
-    SurfaceExtraction::pointer extractor = SurfaceExtraction::New();
+    SurfaceExtraction::pointer extractor = SurfaceExtraction::create();
     extractor->enableRuntimeMeasurements();
     extractor->setInputConnection(filter->getOutputPort());
     extractor->setThreshold(200);
@@ -65,16 +65,15 @@ TEST_CASE("Pipeline A (static)", "[fast][benchmark][visual]") {
 TEST_CASE("Pipeline A (dynamic)", "[fast][benchmark][visual]") {
     ImageFileStreamer::pointer streamer = ImageFileStreamer::New();
     streamer->setFilenameFormat(Config::getTestDataPath()+"/US/Ball/US-3Dt_#.mhd");
-    //streamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
     streamer->enableRuntimeMeasurements();
 
-    GaussianSmoothingFilter::pointer filter = GaussianSmoothingFilter::New();
+    GaussianSmoothing::pointer filter = GaussianSmoothing::New();
     filter->setInputConnection(streamer->getOutputPort());
     filter->setMaskSize(5);
     filter->setStandardDeviation(2.0);
     filter->enableRuntimeMeasurements();
 
-    SurfaceExtraction::pointer extractor = SurfaceExtraction::New();
+    SurfaceExtraction::pointer extractor = SurfaceExtraction::create();
     extractor->setInputConnection(filter->getOutputPort());
     extractor->setThreshold(200);
     extractor->enableRuntimeMeasurements();
@@ -121,7 +120,7 @@ TEST_CASE("Pipeline B", "[fast][benchmark][visual]") {
     segmentation->setIntensityRange(150, 5000);
     segmentation->enableRuntimeMeasurements();
 
-    SurfaceExtraction::pointer extraction = SurfaceExtraction::New();
+    SurfaceExtraction::pointer extraction = SurfaceExtraction::create();
     extraction->setInputConnection(segmentation->getOutputPort());
     extraction->enableRuntimeMeasurements();
 

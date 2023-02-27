@@ -6,11 +6,20 @@
 
 namespace fast {
 
-// A macro for creating new simple data objects
+/**
+ * @brief Text data object
+ *
+ * A data object which represents a string of text.
+ *
+ * @ingroup data
+ */
 class FAST_EXPORT Text : public SpatialDataObject {
-	FAST_OBJECT(Text)
+	FAST_DATA_OBJECT(Text)
 public:
-    void create(std::string text, Color color = Color::Green());
+    FAST_CONSTRUCTOR(Text,
+                     std::string, text,,
+                     Color, color, = Color::Green()
+    );
 	void setPosition(Vector2f position);
     void free(ExecutionDevice::pointer device) {};
     void freeAll() {};

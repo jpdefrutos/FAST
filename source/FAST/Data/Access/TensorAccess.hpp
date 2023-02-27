@@ -2,21 +2,20 @@
 
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include <FAST/Object.hpp>
-#include <FAST/SmartPointers.hpp>
 #include <FAST/Data/TensorShape.hpp>
 
 namespace fast {
 
 // Rename the Eigen float tensor for simplicity
 template<int NumDimensions>
-using TensorData = Eigen::TensorMap<Eigen::Tensor<float, NumDimensions, Eigen::RowMajor>>;
+using TensorData = Eigen::TensorMap<Eigen::Tensor<float, NumDimensions, Eigen::RowMajor, int>>;
 
 class Tensor;
 
 class FAST_EXPORT TensorAccess {
     public:
         typedef std::unique_ptr<TensorAccess> pointer;
-        TensorAccess(float* data, TensorShape shape, SharedPointer<Tensor> tensor);
+        TensorAccess(float* data, TensorShape shape, std::shared_ptr<Tensor> tensor);
         float * getRawData();
         TensorShape getShape() const;
         ~TensorAccess();
@@ -24,7 +23,7 @@ class FAST_EXPORT TensorAccess {
         template <int NumDimensions>
         TensorData<NumDimensions> getData() const;
     private:
-        SharedPointer<Tensor> m_tensor;
+        std::shared_ptr<Tensor> m_tensor;
         TensorShape m_shape;
         float* m_data;
 };
@@ -36,7 +35,7 @@ TensorData<NumDimensions> TensorAccess::getData() const {
         throw Exception("Dimension mismatch for Eigen tensor in TensorAccess::getData<#Dimension>().");
 
     // Construct eigen shape
-    Eigen::array<int64_t, NumDimensions> sizes;
+    Eigen::array<int, NumDimensions> sizes;
     for(int i = 0; i < m_shape.getDimensions(); ++i)
         sizes[i] = m_shape[i];
 

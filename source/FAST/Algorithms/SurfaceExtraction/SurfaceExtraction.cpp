@@ -279,10 +279,9 @@ void SurfaceExtraction::execute() {
         totalSum = std::accumulate(sum.begin(), sum.end(), 0);
     }
 
-    Mesh::pointer output = getOutputData<Mesh>(0);
+    auto output = Mesh::create(totalSum*3, 0, totalSum, false, true, false);
     SceneGraph::setParentNode(output, input);
-    BoundingBox box = input->getBoundingBox();
-    output->create(totalSum*3, 0, totalSum, false, true, false);
+    DataBoundingBox box = input->getBoundingBox();
     output->setBoundingBox(box);
 
     if(totalSum == 0) {
@@ -317,7 +316,7 @@ void SurfaceExtraction::execute() {
     cl::Buffer coordinatesBuffer;
     cl::Buffer normalBuffer;
     std::vector<cl::Memory> v;
-    if(DeviceManager::isGLInteropEnabled()) {
+    if(device->isOpenGLInteropSupported()) {
         coordinatesBuffer = cl::BufferGL(device->getContext(), CL_MEM_WRITE_ONLY, *coordinatesVBO);
         normalBuffer = cl::BufferGL(device->getContext(), CL_MEM_WRITE_ONLY, *normalVBO);
         v.push_back(coordinatesBuffer);
@@ -348,7 +347,7 @@ void SurfaceExtraction::execute() {
     // Run a NDRange kernel over this buffer which traverses back to the base level
     queue.enqueueNDRangeKernel(traverseHPKernel, cl::NullRange, cl::NDRange(global_work_size), cl::NDRange(64));
 
-    if(DeviceManager::isGLInteropEnabled()) {
+    if(device->isOpenGLInteropSupported()) {
         queue.enqueueReleaseGLObjects(&v);
         queue.finish();
     } else {
@@ -390,15 +389,20 @@ void SurfaceExtraction::execute() {
     images.clear();
     buffers.clear();
     mHPSize = 0;
+    addOutputData(0, output);
 }
 
-SurfaceExtraction::SurfaceExtraction() {
-    mThreshold = 0.0f;
+SurfaceExtraction::SurfaceExtraction(float threshold) {
     mHPSize = 0;
     createInputPort<Image>(0);
     createOutputPort<Mesh>(0);
     createOpenCLProgram(Config::getKernelSourcePath() + "/Algorithms/SurfaceExtraction/SurfaceExtraction.cl");
     createOpenCLProgram(Config::getKernelSourcePath() + "/Algorithms/SurfaceExtraction/SurfaceExtraction_no_3d_write.cl", "no_3d_write");
+    setThreshold(threshold);
+}
+
+float SurfaceExtraction::getThreshold() const {
+    return mThreshold;
 }
 
 

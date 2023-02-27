@@ -18,9 +18,9 @@ void BlockMatching::loadAttributes() {
     }
 }
 
-BlockMatching::BlockMatching() {
-    createInputPort<Image>(0);
-    createOutputPort<Image>(0);
+BlockMatching::BlockMatching(int blockSize, int searhSize, MatchingMetric metric, bool forwardBackwardTracking, int timeLag) {
+    createInputPort(0, "Image");
+    createOutputPort(0, "Image");
 
     createOpenCLProgram(Config::getKernelSourcePath() + "/Algorithms/BlockMatching/BlockMatching.cl");
 
@@ -32,6 +32,10 @@ BlockMatching::BlockMatching() {
     createBooleanAttribute("forward-backward", "Forward-backward tracking", "Do tracking forward and backwards and take the average.", m_forwardBackward);
     createIntegerAttribute("roi-offset", "ROI offset", "Offset of region of interest (ROI)", 0);
     createIntegerAttribute("roi-size", "ROI size", "Size of region of interest (ROI), 0 0 means no ROI is used.", 0);
+
+    setBlockSize(blockSize);
+    setSearchSize(searhSize);
+    setMatchingMetric(metric);
 }
 
 void BlockMatching::execute() {
@@ -48,14 +52,14 @@ void BlockMatching::execute() {
 
     auto device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 
-    auto output = getOutputData<Image>(0);
-    output->create(currentFrame->getSize(), TYPE_FLOAT, 2);
+    auto output = Image::create(currentFrame->getSize(), TYPE_FLOAT, 2);
     output->setSpacing(currentFrame->getSpacing());
     m_frameBuffer.push_back(currentFrame);
 
     if(m_frameBuffer.size() < m_timeLag+1) {
         // If previous frame is not available, just fill it with zeros and stop
         output->fill(0);
+        addOutputData(0, output);
         return;
     }
 
@@ -101,11 +105,11 @@ void BlockMatching::execute() {
         );
     }
     queue.finish();
-
     m_frameBuffer.pop_front();
+    addOutputData(0, output);
 }
 
-void BlockMatching::setMatchingMetric(BlockMatching::MatchingMetric type) {
+void BlockMatching::setMatchingMetric(MatchingMetric type) {
     m_type = type;
 }
 

@@ -1,28 +1,32 @@
-#ifndef ImageImporter_HPP_
-#define ImageImporter_HPP_
+#pragma once
 
-#include "Importer.hpp"
+#include <FAST/Importers/FileImporter.hpp>
 #include <string>
 
 namespace fast {
 
-class FAST_EXPORT  ImageImporter : public Importer {
-    FAST_OBJECT(ImageImporter)
+/**
+ * @brief Read JPG/PNG/BMP/TIFF images
+ *
+ * Uses Qt5 to read and output plain JPG/PNG/BMP/GIF images from disk.
+ *
+ * @ingroup importers
+ */
+class FAST_EXPORT ImageImporter : public FileImporter {
+    FAST_PROCESS_OBJECT(ImageImporter)
     public:
-        void setFilename(std::string filename);
+        FAST_CONSTRUCTOR(ImageImporter,
+                         std::string, filename,,
+                         bool, convertToGrayscale, = true
+        )
         void setGrayscale(bool grayscale);
-        ~ImageImporter() {};
+        void loadAttributes() override;
     private:
         ImageImporter();
-        std::string mFilename;
         bool mGrayscale;
-        void execute();
-
+        void execute() override;
 };
-
 
 } // end namespace fast
 
 
-
-#endif /* ImageImporter_HPP_ */

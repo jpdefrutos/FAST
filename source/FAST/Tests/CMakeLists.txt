@@ -12,10 +12,12 @@ fast_add_test_sources(
     SceneGraphTests.cpp
     UtilityTests.cpp
     PipelineSynchronizerTests.cpp
+    PipelineTests.cpp
 )
 if(FAST_MODULE_Visualization)
 fast_add_test_sources(
     SystemTests.cpp
     Benchmarks.cpp
+    DataHubTests.cpp
 )
 endif()

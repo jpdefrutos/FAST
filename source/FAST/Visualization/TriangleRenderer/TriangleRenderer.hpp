@@ -1,5 +1,4 @@
-#ifndef FAST_TRIANGLE_RENDERER_HPP_
-#define FAST_TRIANGLE_RENDERER_HPP_
+#pragma once
 
 #include "FAST/Data/Mesh.hpp"
 #include "FAST/Data/Color.hpp"
@@ -7,9 +6,28 @@
 
 namespace fast {
 
+/**
+ * @brief Renders triangle Mesh data
+ *
+ * @ingroup renderers
+ */
 class FAST_EXPORT TriangleRenderer : public Renderer {
-    FAST_OBJECT(TriangleRenderer)
+    FAST_PROCESS_OBJECT(TriangleRenderer)
     public:
+        /**
+         * @brief Create instance
+         * @param color Color of triangles
+         * @param opacity Triangle opacity
+         * @param wireframe Display wireframe or not
+         * @param specularReflection
+         * @return instance
+         */
+        FAST_CONSTRUCTOR(TriangleRenderer,
+                         Color, color, = Color::Green(),
+                         float, opacity, = 1,
+                         bool, wireframe, = false,
+                         float, specularReflection, = 0.8f
+        );
         uint addInputConnection(DataChannel::pointer port) override;
         uint addInputConnection(DataChannel::pointer port, Color color, float opacity);
         void setDefaultOpacity(float opacity);
@@ -33,8 +51,9 @@ class FAST_EXPORT TriangleRenderer : public Renderer {
          */
         void setIgnoreInvertedNormals(bool ignore);
     private:
-        void draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) override;
-        TriangleRenderer();
+        void
+        draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D, int viewWidth,
+             int viewHeight) override;
 
         std::unordered_map<uint, Color> mInputColors;
         std::unordered_map<int, Color> mLabelColors;
@@ -50,5 +69,3 @@ class FAST_EXPORT TriangleRenderer : public Renderer {
 };
 
 } // namespace fast
-
-#endif

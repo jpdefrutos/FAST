@@ -1,6 +1,7 @@
 #include "FAST/Object.hpp"
 #include <iostream>
 #include <mutex>
+#include <FAST/Config.hpp>
 
 #if defined(__APPLE__) || defined(__MACOSX)
 
@@ -60,9 +61,11 @@ static void terminateHandler() {
 }
 
 Object::Object() {
-    if (std::get_terminate() != terminateHandler) {
-        // Terminate handler not set, create it:
-        std::set_terminate(terminateHandler);
+    if(!Config::getTerminateHandlerDisabled()) {
+        if(std::get_terminate() != terminateHandler) {
+            // Terminate handler not set, create it:
+            std::set_terminate(terminateHandler);
+        }
     }
 
     static std::once_flag flag;
@@ -80,13 +83,13 @@ Object::Object() {
 #endif
         std::cout << "\n     - Powered by -     \n"
             "   _______   __________   \n"
-            "  / __/ _ | / __/_  __/   \n"
-            " / _// __ |_\\ \\  / /    https://fast.eriksmistad.no\n"
+            "  / __/ _ | / __/_  __/   https://fast.eriksmistad.no\n"
+            " / _// __ |_\\ \\  / /               " + getVersion() + "\n"
             "/_/ /_/ |_/___/ /_/       \n\n";
 #if WIN32
         SetConsoleTextAttribute(hStdout, defaultAttributes);
 #else
-        std::cout << "\033[0m"; // Reset
+        std::cout << "\033[0m" << std::flush; // Reset
 #endif
     });
 }

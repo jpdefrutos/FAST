@@ -7,7 +7,7 @@ void QueuedDataChannel::addFrame(DataObject::pointer data) {
     //if(!mGetCalled && mFillCount->getCount() == mMaximumNumberOfFrames)
     //    Reporter::error() << "EXECUTION BLOCKED by DataChannel from " << mProcessObject->getNameOfClass() << ". Do you have a DataChannel object that is not used?" << Reporter::end();
 
-    // Increment semaphore by one, wait if queue is full
+    // Decrement semaphore by one, wait if queue is full
     m_emptyCount->wait();
 
     {
@@ -15,12 +15,12 @@ void QueuedDataChannel::addFrame(DataObject::pointer data) {
 
         // If stop is signaled, throw an exception to stop the entire computation thread
         if(m_stop)
-            throw ThreadStopped();
+            throw ThreadStopped(m_errorMessage);
 
         m_queue.push(data);
     }
 
-    // Decrement semaphore by one, signal any waiting due to empty queue
+    // Increment semaphore by one, signal any waiting due to empty queue
     m_fillCount->signal();
 }
 
@@ -34,7 +34,7 @@ DataObject::pointer QueuedDataChannel::getNextDataFrame() {
 
         // If stop is signaled, throw an exception to stop the entire computation thread
         if(m_stop)
-            throw ThreadStopped();
+            throw ThreadStopped(m_errorMessage);
 
         // Get frame next in queue and remove it from the queue
         data = m_queue.front();
@@ -59,8 +59,12 @@ void QueuedDataChannel::setMaximumNumberOfFrames(uint frames) {
     m_emptyCount = std::make_unique<LightweightSemaphore>(mMaximumNumberOfFrames);
 }
 
-void QueuedDataChannel::stop() {
-    DataChannel::stop();
+int QueuedDataChannel::getMaximumNumberOfFrames() const {
+    return mMaximumNumberOfFrames;
+}
+
+void QueuedDataChannel::stop(std::string errorMessage) {
+    DataChannel::stop(errorMessage);
     Reporter::info() << "SIGNALING SEMAPHORES in QueuedDataChannel" << Reporter::end();
 
     // Since getNextFrame or addFrame might be waiting for data, we need to signal the semaphore to stop them blocking

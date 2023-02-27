@@ -21,7 +21,27 @@ class INFERENCEENGINEOPENVINO_EXPORT OpenVINOEngine : public InferenceEngine {
 
         std::string getName() const override;
 
-		std::string getDefaultFileExtension() const override;
+        std::vector<ModelFormat> getSupportedModelFormats() const {
+            return { ModelFormat::OPENVINO, ModelFormat::ONNX };
+        };
+
+        ModelFormat getPreferredModelFormat() const {
+            return ModelFormat::OPENVINO;
+        };
+
+        /**
+         * Get a list of devices available for this inference engine.
+         *
+         * @return vector with info on each device
+         */
+        std::vector<InferenceDeviceInfo> getDeviceList() override;
+
+        /**
+         * Load a custom operator (op). You have to do this BEFORE calling load() to load the model/graph.
+         *
+         * @param filenames (can be a .so/.dll file for CPU plugin, or .xml for GPU/VPU plugins
+         */
+        void loadCustomPlugins(std::vector<std::string> filename) override;
 
         ~OpenVINOEngine();
     private:
@@ -30,6 +50,9 @@ class INFERENCEENGINEOPENVINO_EXPORT OpenVINOEngine : public InferenceEngine {
         std::shared_ptr<::InferenceEngine::InferRequest> m_inferRequest;
 		
         void loadPlugin(std::string deviceType);
+
+        // This mutex is used to ensure only one thread is using this OpenVINO instance at the same time
+        std::mutex m_mutex;
 };
 
 DEFINE_INFERENCE_ENGINE(OpenVINOEngine, INFERENCEENGINEOPENVINO_EXPORT)

@@ -1,19 +1,21 @@
 #include "ImageFileExporter.hpp"
 #include "MetaImageExporter.hpp"
+#ifdef FAST_MODULE_VISUALIZATION
 #include "ImageExporter.hpp"
+#endif
 #include "FAST/Data/Image.hpp"
 #include <algorithm>
+#include <utility>
 
 namespace fast {
 
-void ImageFileExporter::setFilename(std::string filename) {
-    mFilename = filename;
-    mIsModified = true;
+ImageFileExporter::ImageFileExporter() : ImageFileExporter("") {
 }
 
-ImageFileExporter::ImageFileExporter() {
-    mFilename = "";
+ImageFileExporter::ImageFileExporter(std::string filename, bool compress, bool resample) : FileExporter(filename) {
     createInputPort<Image>(0);
+    setCompression(compress);
+    setResampleIfNeeded(resample);
 }
 
 inline bool matchExtension(std::string extension, std::string extension2) {
@@ -24,34 +26,35 @@ inline bool matchExtension(std::string extension, std::string extension2) {
 }
 
 void ImageFileExporter::execute() {
-    if(mFilename == "")
+    if(m_filename.empty())
         throw Exception("No filename was given to the ImageFileExporter");
 
-    Image::pointer input = getInputData<Image>();
+    std::cout << "Getting data.." << std::endl;
+    auto input = getInputData<Image>();
+    std::cout << "Done" << std::endl;
 
     // Get file extension
-    size_t pos = mFilename.rfind(".", -5);
+    size_t pos = m_filename.rfind(".", -5);
     if(pos == std::string::npos) {
         throw Exception("ImageFileExporter filename had no extension");
     } else {
-        std::string ext = mFilename.substr(pos + 1);
+        std::string ext = m_filename.substr(pos + 1);
         if(matchExtension(ext, "mhd")) {
-            MetaImageExporter::pointer exporter = MetaImageExporter::New();
-            exporter->setInputData(input);
-            exporter->setFilename(mFilename);
-            exporter->setCompression(mCompress);
-            exporter->update();
+            auto exporter = MetaImageExporter::create(m_filename, mCompress)
+                    ->connect(input);
+            exporter->run();
         } else if(matchExtension(ext, "jpg") ||
                   matchExtension(ext, "jpeg") ||
                   matchExtension(ext, "png") ||
                   matchExtension(ext, "bmp")) {
 #ifdef FAST_MODULE_VISUALIZATION
-            ImageExporter::pointer exporter = ImageExporter::New();
-            exporter->setFilename(mFilename);
+            auto exporter = ImageExporter::create(m_filename, m_resample)
+                    ->connect(input);
+            exporter->setFilename(m_filename);
             exporter->setInputData(input);
             exporter->update();
 #else
-            throw Exception("The ImageFileExporter needs the visualization module (Qt) to be enabled in order to write image files.");
+            throw Exception("Image export to common image formats such as jpg, png and bmp needs FAST built with Qt");
 #endif
         } else {
             throw Exception("The ImageFileExporter does not recognize the file extension " + ext);
@@ -62,6 +65,10 @@ void ImageFileExporter::execute() {
 
 void ImageFileExporter::setCompression(bool compress) {
     mCompress = compress;
+}
+
+void ImageFileExporter::setResampleIfNeeded(bool resample) {
+    m_resample = resample;
 }
 
 }

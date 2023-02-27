@@ -9,7 +9,7 @@ class ProcessObject;
 
 class FAST_EXPORT DataChannel : public Object {
     public:
-        typedef SharedPointer<DataChannel> pointer;
+        typedef std::shared_ptr<DataChannel> pointer;
 
         /**
          * Add frame to the data channel. This call may block
@@ -22,7 +22,7 @@ class FAST_EXPORT DataChannel : public Object {
          * It will block until the frame is available.
          */
         template <class T = DataObject>
-        SharedPointer<T> getNextFrame();
+        std::shared_ptr<T> getNextFrame();
 
         /**
          * @return the number of frames stored in this DataChannel
@@ -34,25 +34,29 @@ class FAST_EXPORT DataChannel : public Object {
          */
         virtual void setMaximumNumberOfFrames(uint frames) = 0;
 
+        virtual int getMaximumNumberOfFrames() const = 0;
+
         /**
-         * This will unblock if this DataChannel is currently blocking. Used to stop a pipeline.
+         * @brief This will unblock if this DataChannel is currently blocking. Used to stop a pipeline.
+         * @param Error message to supply.
          */
-        virtual void stop() = 0;
+        virtual void stop(std::string errorMessage = "") = 0;
 
         // TODO consider removing, it is equal to getSize() > 0 atm
         virtual bool hasCurrentData() = 0;
 
         /**
-         * Get current frame, throws if current frame is not available.
+         * @brief Get current frame, throws if current frame is not available.
          */
         virtual DataObject::pointer getFrame() = 0;
 
-        SharedPointer<ProcessObject> getProcessObject() const;
-        void setProcessObject(SharedPointer<ProcessObject> po);
+        std::shared_ptr<ProcessObject> getProcessObject() const;
+        void setProcessObject(std::shared_ptr<ProcessObject> po);
     protected:
         bool m_stop;
+        std::string m_errorMessage = "";
         std::mutex m_mutex;
-        SharedPointer<ProcessObject> m_processObject;
+        std::shared_ptr<ProcessObject> m_processObject;
 
         virtual DataObject::pointer getNextDataFrame() = 0;
         DataChannel();
@@ -60,10 +64,10 @@ class FAST_EXPORT DataChannel : public Object {
 
 // Template specialization when T = DataObject
 template <>
-FAST_EXPORT SharedPointer<DataObject> DataChannel::getNextFrame<DataObject>();
+FAST_EXPORT std::shared_ptr<DataObject> DataChannel::getNextFrame<DataObject>();
 
 template <class T>
-SharedPointer<T> DataChannel::getNextFrame() {
+std::shared_ptr<T> DataChannel::getNextFrame() {
     auto data = getNextDataFrame();
     auto convertedData = std::dynamic_pointer_cast<T>(data);
     // Check if the conversion went ok

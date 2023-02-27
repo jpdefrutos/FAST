@@ -7,29 +7,35 @@
 namespace fast {
 
 class ImagePyramid;
+class ImageSharpening;
 
+/**
+ * @brief Renders tiled image pyramids
+ *
+ * @ingroup renderer wsi
+ */
 class FAST_EXPORT ImagePyramidRenderer : public Renderer {
-    FAST_OBJECT(ImagePyramidRenderer)
+    FAST_PROCESS_OBJECT(ImagePyramidRenderer)
     public:
+        FAST_CONSTRUCTOR(ImagePyramidRenderer, bool, sharpening, = true)
+        void setSharpening(bool sharpening);
+        bool getSharpening() const;
         void loadAttributes() override;
-        void setIntensityLevel(float level);
-        float getIntensityLevel();
-        void setIntensityWindow(float window);
-        float getIntensityWindow();
-        ~ImagePyramidRenderer() override;
+        ~ImagePyramidRenderer();
         void clearPyramid();
     private:
-        ImagePyramidRenderer();
-        void draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D);
+        void
+        draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D, int viewWidth,
+             int viewHeight);
 
         std::unordered_map<std::string, uint> mTexturesToRender;
-        std::unordered_map<uint, SharedPointer<ImagePyramid>> mImageUsed;
+        std::unordered_map<uint, std::shared_ptr<ImagePyramid>> mImageUsed;
         std::unordered_map<std::string, uint> mVAO;
         std::unordered_map<std::string, uint> mVBO;
         std::unordered_map<std::string, uint> mEBO;
 
         // Queue of tiles to be loaded
-        std::deque<std::string> m_tileQueue; // LIFO queue
+        std::list<std::string> m_tileQueue; // LIFO queue
         // Buffer to process queue
         std::unique_ptr<std::thread> m_bufferThread;
         // Condition variable to wait if queue is empty
@@ -38,15 +44,12 @@ class FAST_EXPORT ImagePyramidRenderer : public Renderer {
         bool m_stop = false;
         std::unordered_set<std::string> m_loaded;
 
-        int m_currentLevel;
+        int m_currentLevel = -1;
 
-        cl::Kernel mKernel;
+        bool m_postProcessingSharpening = true;
+        std::shared_ptr<ImageSharpening> m_sharpening;
 
-        SharedPointer<ImagePyramid> m_input;
-
-        // Level and window intensities
-        float mWindow;
-        float mLevel;
+        std::shared_ptr<ImagePyramid> m_input;
 
         void drawTextures(Matrix4f &perspectiveMatrix, Matrix4f &viewingMatrix, bool mode2D);
 };

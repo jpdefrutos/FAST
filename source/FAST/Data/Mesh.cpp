@@ -9,32 +9,29 @@
 #include <QOpenGLFunctions_3_3_Core>
 #endif
 
-
-#if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenGL/OpenGL.h>
-#else
-#if _WIN32
-#include <windows.h>
-#include <GL/gl.h>
-#else
-#include <GL/glx.h>
-
-#endif
-#endif
-
 namespace fast {
 
-void Mesh::create(
+Mesh::Mesh(
         std::vector<MeshVertex> vertices,
         std::vector<MeshLine> lines,
         std::vector<MeshTriangle> triangles
-    ) {
+    ) : Mesh() {
      if(mIsInitialized) {
         // Delete old data
         freeAll();
     }
-    if(vertices.size() == 0) {
-    	create(0, 0, 0, false, false, false);
+    if(vertices.empty()) {
+        mBoundingBox = DataBoundingBox(Vector3f(1,1,1));
+        mIsInitialized = true;
+        mNrOfVertices = 0;
+        mNrOfLines = 0;
+        mUseColorVBO = false;
+        mUseNormalVBO = false;
+        mUseEBO = false;
+        mNrOfTriangles = 0;
+        mHostHasData = true;
+        mHostDataIsUpToDate = true;
+        updateModifiedTimestamp();
     	return;
     }
 
@@ -66,9 +63,9 @@ void Mesh::create(
     }
 
 	if(vertices.size() > 0) {
-		mBoundingBox = BoundingBox(positions);
+		mBoundingBox = DataBoundingBox(positions);
 	} else {
-		mBoundingBox = BoundingBox(Vector3f(0,0,0)); // TODO Fix
+		mBoundingBox = DataBoundingBox(Vector3f(0,0,0)); // TODO Fix
 	}
     mNrOfVertices = vertices.size();
     mNrOfLines = lines.size();
@@ -81,19 +78,19 @@ void Mesh::create(
     updateModifiedTimestamp();
 }
 
-void Mesh::create(
+Mesh::Mesh(
         uint nrOfVertices,
         uint nrOfLines,
         uint nrOfTriangles,
         bool useColors,
         bool useNormals,
         bool useEBO
-        ) {
+        ) : Mesh() {
     if(mIsInitialized) {
         // Delete old data
         freeAll();
     }
-    mBoundingBox = BoundingBox(Vector3f(1,1,1));
+    mBoundingBox = DataBoundingBox(Vector3f(1,1,1));
     mIsInitialized = true;
     mNrOfVertices = nrOfVertices;
     mNrOfLines = nrOfLines;
@@ -567,7 +564,7 @@ int Mesh::getNrOfVertices() {
     return mNrOfVertices;
 }
 
-void Mesh::setBoundingBox(BoundingBox box) {
+void Mesh::setBoundingBox(DataBoundingBox box) {
     mBoundingBox = box;
 }
 

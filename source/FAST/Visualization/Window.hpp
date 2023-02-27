@@ -21,6 +21,7 @@ class FAST_EXPORT  Window : public QObject, public Object {
     public:
         static void initializeQtApp();
         static QGLContext* getMainGLContext();
+        static QGLContext* getSecondaryGLContext();
         static void setMainGLContext(QGLContext* context);
         /**
          * Makes the window close after a specific number of ms
@@ -31,6 +32,10 @@ class FAST_EXPORT  Window : public QObject, public Object {
          * Starts an update loop on all renderers attached to each view in this window.
          */
         virtual void start();
+        /**
+         * @brief Opens window and starts pipeline on all renderers
+         */
+        virtual void run();
         void setWidth(uint width);
         void setHeight(uint height);
         void setSize(uint width, uint height);
@@ -39,8 +44,10 @@ class FAST_EXPORT  Window : public QObject, public Object {
         void enableFullscreen();
         void disableFullscreen();
         void setTitle(std::string);
-        std::vector<View*> getViews() const;
-        View* getView(uint i) const;
+        void clearViews();
+        std::vector<View*> getViews();
+        View* getView(uint i);
+        void addView(View* view);
         static void cleanup();
         /**
          * Get screen width in pixels
@@ -57,13 +64,32 @@ class FAST_EXPORT  Window : public QObject, public Object {
          * @return
          */
         float getScalingFactor() const;
-        void saveScreenshotOnClose(std::string filename);
-        void saveScreenshotOfViewsOnClose(std::string filename);
         QWidget* getWidget();
-        void addProcessObject(SharedPointer<ProcessObject> po);
-    protected:
+        /**
+         * Add a process object to be updated by the computation thread.
+         */
+        void addProcessObject(std::shared_ptr<ProcessObject> po);
+        /**
+         * Get process objects to be updated by the computation thread.
+         */
+        std::vector<std::shared_ptr<ProcessObject>> getProcessObjects();
+        /**
+         * Clear the process objects to be updated by the computation thread.
+         */
+        void clearProcessObjects();
+
+        /**
+         * @brief Set 2D mode for all views in this window
+         */
+        void set2DMode();
+        /**
+         * @brief Set 3D mode for all views in this window
+         */
+        void set3DMode();
+protected:
         void startComputationThread();
         void stopComputationThread();
+        std::shared_ptr<ComputationThread> getComputationThread();
         Window();
         View* createView();
 
@@ -73,11 +99,12 @@ class FAST_EXPORT  Window : public QObject, public Object {
         unsigned int mTimeout;
         float mGUIScalingFactor = 1.0f;
         QEventLoop* mEventLoop;
-        ComputationThread* mThread;
-        std::vector<SharedPointer<ProcessObject>> m_processObjects;
+        std::shared_ptr<ComputationThread> mThread;
+        std::mutex m_mutex;
     private:
         static QGLContext* mMainGLContext;
-    public slots:
+        static QGLContext* mSecondaryGLContext;
+    public Q_SLOTS:
         void stop();
 
 

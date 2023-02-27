@@ -1,6 +1,7 @@
 build*/
 TestData/
 .idea/
+.vs/
 *.cl.bin
 *cl.cache
 .cproject
@@ -8,3 +9,5 @@ TestData/
 *.xml
 /data/
 *.zip
+cmake-*
+*.pyc

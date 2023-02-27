@@ -5,19 +5,18 @@
 namespace fast {
 
 ImageInverter::ImageInverter() {
-    createInputPort<Image>(0);
-    createOutputPort<Image>(0);
+    createInputPort(0);
+    createOutputPort(0);
     createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/ImageInverter/ImageInverter.cl");
 }
 
 void ImageInverter::execute() {
-    Image::pointer input = getInputData<Image>();
-    Image::pointer output = getOutputData<Image>();
+    auto input = getInputData<Image>();
 
     float max = input->calculateMaximumIntensity();
     float min = input->calculateMinimumIntensity();
 
-    output->createFromImage(input);
+    auto output = Image::createFromImage(input);
     Vector3ui size = input->getSize();
 
     OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
@@ -41,7 +40,7 @@ void ImageInverter::execute() {
             cl::NDRange(size.x(), size.y(), size.z()),
             cl::NullRange
     );
-
+    addOutputData(0, output);
 }
 
 }

@@ -16,14 +16,22 @@ namespace fast{
 class FAST_EXPORT Plotter : public QObject, public ProcessObject {
     Q_OBJECT
 public:
+    /**
+     * @brief How often to update plot
+     *
+     * Set how many times per second the plot should update.
+     * This setting impacts performance.
+     *
+     * @param frequency
+     */
     virtual void setUpdateFrequency(float frequency);
     virtual JKQTPlotter* getPlotterWidget();
 protected:
     JKQTPlotter* m_plotterWidget;
-    QTimer* m_timer;
-public slots:
+    QTimer* m_timer = nullptr;
+public Q_SLOTS:
     virtual void processQueue() = 0;
-signals:
+Q_SIGNALS:
     void newData();
 };
 }

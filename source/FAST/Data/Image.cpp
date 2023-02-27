@@ -6,6 +6,20 @@
 #include "FAST/SceneGraph.hpp"
 #include "FAST/Config.hpp"
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
+#ifdef FAST_MODULE_VISUALIZATION
+#include <FAST/Visualization/Window.hpp>
+#endif
+#if defined(__APPLE__) || defined(__MACOSX)
+#include <OpenGL/gl.h>
+#include <OpenCL/cl_gl.h>
+#include <OpenGL/OpenGL.h>
+#elif _WIN32
+#include <GL/gl.h>
+#include <CL/cl_gl.h>
+#else
+#include <GL/gl.h>
+#include <CL/cl_gl.h>
+#endif
 
 namespace fast {
 
@@ -366,6 +380,7 @@ void Image::updateHostData() {
 
 void Image::setAllDataToOutOfDate() {
     mHostDataIsUpToDate = false;
+    m_GLtextureUpToDate = false;
     std::unordered_map<OpenCLDevice::pointer, bool>::iterator it;
     for (it = mCLImagesIsUpToDate.begin(); it != mCLImagesIsUpToDate.end();
             it++) {
@@ -418,7 +433,7 @@ Image::Image() {
     mHostDataIsUpToDate = false;
     mSpacing = Vector3f(1,1,1);
     mMaxMinInitialized = false;
-    mAverageInitialized = false;
+    mSumInitialized = false;
     mIsInitialized = false;
 }
 
@@ -448,66 +463,76 @@ ImageAccess::pointer Image::getImageAccess(accessType type) {
 	return std::move(accessObject);
 }
 
-void Image::create(
+Image::Image(
         VectorXui size,
         DataType type,
-        unsigned int nrOfChannels) {
+        unsigned int nrOfChannels) : Image() {
 
     if(size.rows() > 2 && size.z() > 1) {
         // 3D
-        create(size.x(), size.y(), size.z(), type, nrOfChannels);
+        init(size.x(), size.y(), size.z(), type, nrOfChannels);
     } else {
         // 2D
-        create(size.x(), size.y(), type, nrOfChannels);
+        init(size.x(), size.y(), type, nrOfChannels);
     }
 }
 
-void Image::create(
+Image::Image(
         VectorXui size,
         DataType type,
         unsigned int nrOfChannels,
         ExecutionDevice::pointer device,
-        const void* const data) {
+        const void* const data) : Image() {
 
     if(size.rows() > 2 && size.z() > 1) {
         // 3D
-        create(size.x(), size.y(), size.z(), type, nrOfChannels, device, data);
+        init(size.x(), size.y(), size.z(), type, nrOfChannels);
     } else {
         // 2D
-        create(size.x(), size.y(), type, nrOfChannels, device, data);
+        init(size.x(), size.y(), type, nrOfChannels);
     }
+    copyData(device, data);
 }
 
-void Image::create(
+Image::Image(
         VectorXui size,
         DataType type,
         unsigned int nrOfChannels,
-        const void* const data) {
+        const void* const data) : Image() {
 
     if(size.rows() > 2 && size.z() > 1) {
         // 3D
-        create(size.x(), size.y(), size.z(), type, nrOfChannels, DeviceManager::getInstance()->getDefaultComputationDevice(), data);
+        init(size.x(), size.y(), size.z(), type, nrOfChannels);
     } else {
         // 2D
-        create(size.x(), size.y(), type, nrOfChannels, DeviceManager::getInstance()->getDefaultComputationDevice(), data);
+        init(size.x(), size.y(), type, nrOfChannels);
     }
+    copyData(DeviceManager::getInstance()->getDefaultDevice(), data);
 }
 
 
-void Image::create(
+Image::Image(
+        unsigned int width,
+        unsigned int height,
+        unsigned int depth,
+        DataType type,
+        unsigned int nrOfChannels) : Image() {
+    init(width, height, depth, type, nrOfChannels);
+}
+
+void Image::init(
         unsigned int width,
         unsigned int height,
         unsigned int depth,
         DataType type,
         unsigned int nrOfChannels) {
-
     getSceneGraphNode()->reset(); // reset scene graph node
     freeAll(); // delete any old data
 
     mWidth = width;
     mHeight = height;
     mDepth = depth;
-    mBoundingBox = BoundingBox(Vector3f(width, height, depth));
+    mBoundingBox = DataBoundingBox(Vector3f(width, height, depth));
     mDimensions = 3;
     mType = type;
     mChannels = nrOfChannels;
@@ -516,43 +541,52 @@ void Image::create(
 }
 
 
-void Image::create(
+Image::Image(
         unsigned int width,
         unsigned int height,
         unsigned int depth,
         DataType type,
         unsigned int nrOfChannels,
         ExecutionDevice::pointer device,
-        const void* const data) {
+        const void* const data) : Image() {
 
-    create(width, height, depth, type, nrOfChannels);
-
+    init(width, height, depth, type, nrOfChannels);
     copyData(device, data);
 }
 
-void Image::create(
+Image::Image(
         unsigned int width,
         unsigned int height,
         unsigned int depth,
         DataType type,
         unsigned int nrOfChannels,
-        const void* const data) {
+        const void* const data) : Image() {
 
-	create(width, height, depth, type, nrOfChannels, DeviceManager::getInstance()->getDefaultComputationDevice(), data);
+	init(width, height, depth, type, nrOfChannels);
+	copyData(DeviceManager::getInstance()->getDefaultDevice(), data);
 }
 
-void Image::create(
+Image::Image(
         unsigned int width,
         unsigned int height,
         DataType type,
-        unsigned int nrOfChannels) {
+        unsigned int nrOfChannels
+        ) : Image() {
+    init(width, height, type, nrOfChannels);
+}
 
+void Image::init(
+        unsigned int width,
+        unsigned int height,
+        DataType type,
+        unsigned int nrOfChannels
+        ) {
     getSceneGraphNode()->reset(); // reset scene graph node
     freeAll(); // delete any old data
 
     mWidth = width;
     mHeight = height;
-    mBoundingBox = BoundingBox(Vector3f(width, height, 0));
+    mBoundingBox = DataBoundingBox(Vector3f(width, height, 0));
     mDepth = 1;
     mDimensions = 2;
     mType = type;
@@ -561,28 +595,37 @@ void Image::create(
     mIsInitialized = true;
 }
 
-void Image::create(
+void Image::init(VectorXui size, DataType type, uint nrOfChannels) {
+    if(size.size() == 2 || size.z() == 1) {
+        init(size.x(), size.y(), type, nrOfChannels);
+    } else {
+        init(size.x(), size.y(), size.z(), type, nrOfChannels);
+    }
+}
+
+Image::Image(
         unsigned int width,
         unsigned int height,
         DataType type,
         unsigned int nrOfChannels,
         ExecutionDevice::pointer device,
-        const void* const data) {
+        const void* const data) : Image() {
 
-    create(width, height, type, nrOfChannels);
+    init(width, height, type, nrOfChannels);
 
     copyData(device, data);
 
 }
 
-void Image::create(
+Image::Image(
         unsigned int width,
         unsigned int height,
         DataType type,
         unsigned int nrOfChannels,
-        const void* const data) {
+        const void* const data) : Image() {
 
-	create(width, height, type, nrOfChannels, DeviceManager::getInstance()->getDefaultComputationDevice(), data);
+	init(width, height, type, nrOfChannels);
+	copyData(DeviceManager::getInstance()->getDefaultDevice(), data);
 }
 
 void Image::copyData(ExecutionDevice::pointer device, const void* const data) {
@@ -818,6 +861,8 @@ void Image::calculateMaxAndMinIntensity() {
                     }
                 }
             }
+            if(!found)
+                throw Exception(("Can't calculate max/min intensity of image because pixel data has not been initialized."));
         }
 
         // Update timestamp
@@ -826,37 +871,35 @@ void Image::calculateMaxAndMinIntensity() {
     }
 }
 
-float Image::calculateAverageIntensity() {
-     if(!isInitialized())
+float Image::calculateSumIntensity() {
+    if(!isInitialized())
         throw Exception("Image has not been initialized.");
 
-    // Calculate max and min if image has changed or it is the first time
-    if(!mAverageInitialized || mAverageIntensityTimestamp != getTimestamp()) {
+    // Calculate sum if image has changed or it is the first time
+    if(!mSumInitialized || mSumIntensityTimestamp != getTimestamp()) {
         unsigned int nrOfElements = mWidth*mHeight*mDepth;
-        if(mHostHasData && mHostDataIsUpToDate) {
-            reportInfo() << "calculating sum on host" << Reporter::end();
-            // Host data is up to date, calculate min and max on host
+        if((mHostHasData && mHostDataIsUpToDate) || getNrOfVoxels() < 256) {
+            // Host data is up to date, or image is very small, calculate min and max on host
             ImageAccess::pointer access = getImageAccess(ACCESS_READ);
             void* data = access->get();
             switch(mType) {
-            case TYPE_FLOAT:
-                mAverageIntensity = getSumFromData<float>(data,nrOfElements) / nrOfElements;
-                break;
-            case TYPE_INT8:
-                mAverageIntensity = getSumFromData<char>(data,nrOfElements) / nrOfElements;
-                break;
-            case TYPE_UINT8:
-                mAverageIntensity = getSumFromData<uchar>(data,nrOfElements) / nrOfElements;
-                break;
-            case TYPE_INT16:
-                mAverageIntensity = getSumFromData<short>(data,nrOfElements) / nrOfElements;
-                break;
-            case TYPE_UINT16:
-                mAverageIntensity = getSumFromData<ushort>(data,nrOfElements) / nrOfElements;
-                break;
+                case TYPE_FLOAT:
+                    mSumIntensity = getSumFromData<float>(data,nrOfElements);
+                    break;
+                case TYPE_INT8:
+                    mSumIntensity = getSumFromData<char>(data,nrOfElements);
+                    break;
+                case TYPE_UINT8:
+                    mSumIntensity = getSumFromData<uchar>(data,nrOfElements);
+                    break;
+                case TYPE_INT16:
+                    mSumIntensity = getSumFromData<short>(data,nrOfElements);
+                    break;
+                case TYPE_UINT16:
+                    mSumIntensity = getSumFromData<ushort>(data,nrOfElements);
+                    break;
             }
         } else {
-            reportInfo() << "calculating sum with OpenCL" << Reporter::end();
             // TODO the logic here can be improved. For instance choose the best device
             // Find some OpenCL image data or buffer data that is up to date
             bool found = false;
@@ -886,7 +929,7 @@ float Image::calculateAverageIntensity() {
                             //getIntensitySumFromOpenCLImage(device, *clImage, mType, &sum);
                         }
                     }
-                    mAverageIntensity = sum / nrOfElements;
+                    mSumIntensity = sum;
                     found = true;
                 }
             }
@@ -898,7 +941,7 @@ float Image::calculateAverageIntensity() {
                         OpenCLBufferAccess::pointer access = getOpenCLBufferAccess(ACCESS_READ, device);
                         cl::Buffer* buffer = access->get();
                         // TODO
-                            throw Exception("Not implemented yet");
+                        throw Exception("Not implemented yet");
                         //getMaxAndMinFromOpenCLBuffer(device, *buffer, nrOfElements, mType, &mMinimumIntensity, &mMaximumIntensity);
                         found = true;
                     }
@@ -907,11 +950,18 @@ float Image::calculateAverageIntensity() {
         }
 
         // Update timestamp
-        mAverageIntensityTimestamp = getTimestamp();
-        mAverageInitialized = true;
+        mSumIntensityTimestamp = getTimestamp();
+        mSumInitialized = true;
     }
 
-    return mAverageIntensity;
+    return mSumIntensity;
+}
+
+float Image::calculateAverageIntensity() {
+    if(!isInitialized())
+        throw Exception("Image has not been initialized.");
+
+    return calculateSumIntensity() / getNrOfVoxels();
 }
 
 float Image::calculateMaximumIntensity() {
@@ -930,10 +980,9 @@ float Image::calculateMinimumIntensity() {
     return mMinimumIntensity;
 }
 
-void Image::createFromImage(
-        Image::pointer image) {
+Image::Image(Image::pointer image) : Image() {
     // Create image first
-    create(image->getSize(), image->getDataType(), image->getNrOfChannels());
+    init(image->getSize(), image->getDataType(), image->getNrOfChannels());
 
     // Copy metadata
     setSpacing(image->getSpacing());
@@ -942,8 +991,7 @@ void Image::createFromImage(
 
 
 Image::pointer Image::copy(ExecutionDevice::pointer device) {
-    Image::pointer clone = Image::New();
-    clone->createFromImage(std::static_pointer_cast<Image>(mPtr.lock()));
+    Image::pointer clone = Image::createFromImage(std::static_pointer_cast<Image>(mPtr.lock()));
 
     // If device is host, get data from this image to host
     if(device->isHost()) {
@@ -1030,7 +1078,8 @@ void Image::fill(float value) {
     	// Has no data
     	// Create an OpenCL image
     	cl::Image* clImage;
-        OpenCLDevice::pointer clDevice = std::dynamic_pointer_cast<OpenCLDevice>(DeviceManager::getInstance()->getDefaultComputationDevice());
+        OpenCLDevice::pointer clDevice = std::dynamic_pointer_cast<OpenCLDevice>(
+                DeviceManager::getInstance()->getDefaultDevice());
     	if(getDimensions() == 2) {
 			clImage = new cl::Image2D(
 				clDevice->getContext(),
@@ -1108,9 +1157,7 @@ void Image::fill(float value) {
     }
 }
 
-Image::pointer Image::crop(VectorXi offset, VectorXi size, bool allowOutOfBoundsCropping) {
-    Image::pointer newImage = Image::New();
-
+Image::pointer Image::crop(VectorXi offset, VectorXi size, bool allowOutOfBoundsCropping, int croppingValue) {
     bool needInitialization = false;
     VectorXi newImageSize = size;
     VectorXi copySourceOffset = offset;
@@ -1147,18 +1194,19 @@ Image::pointer Image::crop(VectorXi offset, VectorXi size, bool allowOutOfBounds
     OpenCLDevice::pointer clDevice;
     if(device->isHost()) { // If data is only on host, copy data to GPU first
         // TODO implement cropping on host instead
-        clDevice = std::dynamic_pointer_cast<OpenCLDevice>(DeviceManager::getInstance()->getDefaultComputationDevice());
+        clDevice = std::dynamic_pointer_cast<OpenCLDevice>(DeviceManager::getInstance()->getDefaultDevice());
         copyData(clDevice, mHostData.get());
     } else {
         clDevice = std::static_pointer_cast<OpenCLDevice>(device);
     }
 
+    Image::pointer newImage;
     if(getDimensions() == 2) {
         if(offset.size() < 2 || size.size() < 2)
             throw Exception("offset and size vectors given to Image::crop must have at least 2 channels");
-        newImage->create(newImageSize.cast<uint>(), getDataType(), getNrOfChannels());
+        newImage = Image::create(newImageSize.cast<uint>(), getDataType(), getNrOfChannels());
         if(needInitialization)
-            newImage->fill(0);
+            newImage->fill(croppingValue);
         OpenCLImageAccess::pointer readAccess = this->getOpenCLImageAccess(ACCESS_READ, clDevice);
         OpenCLImageAccess::pointer writeAccess = newImage->getOpenCLImageAccess(ACCESS_READ_WRITE, clDevice);
         cl::Image2D* input = readAccess->get2DImage();
@@ -1184,14 +1232,18 @@ Image::pointer Image::crop(VectorXi offset, VectorXi size, bool allowOutOfBounds
     } else {
         if(offset.size() < 3 || size.size() < 3)
             throw Exception("offset and size vectors given to Image::crop must have at least 3 channels");
-        newImage->create(newImageSize.cast<uint>(), getDataType(), getNrOfChannels());
+        newImage = Image::create(newImageSize.cast<uint>(), getDataType(), getNrOfChannels());
         if(needInitialization)
-            newImage->fill(0);
+            newImage->fill(croppingValue);
         OpenCLImageAccess::pointer readAccess = this->getOpenCLImageAccess(ACCESS_READ, clDevice);
         OpenCLImageAccess::pointer writeAccess = newImage->getOpenCLImageAccess(ACCESS_READ_WRITE, clDevice);
         cl::Image3D* input = readAccess->get3DImage();
-        cl::Image3D* output = writeAccess->get3DImage();
-
+        cl::Image* output;
+        if(newImage->getDimensions() == 2) {
+            output = writeAccess->get2DImage();
+        } else {
+            output = writeAccess->get3DImage();
+        }
         clDevice->getCommandQueue().enqueueCopyImage(
                 *input,
                 *output,
@@ -1202,29 +1254,29 @@ Image::pointer Image::crop(VectorXi offset, VectorXi size, bool allowOutOfBounds
     }
 
     // Fix placement and spacing of the new cropped image
-    AffineTransformation::pointer T = AffineTransformation::New();
     newImage->setSpacing(getSpacing());
     // Multiply with spacing here to convert voxel translation to world(mm) translation
-    T->getTransform().translation() = getSpacing().cwiseProduct(getDimensions() == 2 ? Vector3f(offset.x(), offset.y(), 0) : Vector3f(offset.x(), offset.y(), offset.z()));
-    newImage->getSceneGraphNode()->setTransformation(T);
+    Affine3f T;
+    T.translation() = getSpacing().cwiseProduct(getDimensions() == 2 ? Vector3f(offset.x(), offset.y(), 0) : Vector3f(offset.x(), offset.y(), offset.z()));
+    newImage->getSceneGraphNode()->setTransform(T);
     SceneGraph::setParentNode(newImage, std::static_pointer_cast<SpatialDataObject>(mPtr.lock()));
 
     return newImage;
 }
 
-BoundingBox Image::getTransformedBoundingBox() const {
-    AffineTransformation::pointer T = SceneGraph::getAffineTransformationFromNode(getSceneGraphNode());
+DataBoundingBox Image::getTransformedBoundingBox() const {
+    auto T = SceneGraph::getEigenTransformFromNode(getSceneGraphNode());
 
     // Add image spacing
-    T->getTransform().scale(getSpacing());
+    T.scale(getSpacing());
 
     return SpatialDataObject::getBoundingBox().getTransformedBoundingBox(T);
 }
 
-BoundingBox Image::getBoundingBox() const {
+DataBoundingBox Image::getBoundingBox() const {
     // Add image spacing
-    AffineTransformation::pointer T = AffineTransformation::New();
-    T->getTransform().scale(getSpacing());
+    auto T = Affine3f::Identity();
+    T.scale(getSpacing());
 
     return SpatialDataObject::getBoundingBox().getTransformedBoundingBox(T);
 }
@@ -1235,6 +1287,162 @@ int Image::getNrOfVoxels() const {
 
 Image::~Image() {
     freeAll();
+}
+
+OpenGLTextureAccess::pointer Image::getOpenGLTextureAccess(accessType type, OpenCLDevice::pointer device, bool compress) {
+#ifdef FAST_MODULE_VISUALIZATION
+    if(type == ACCESS_READ_WRITE)
+        throw Exception("Read-only access to OpenGL texture for now");
+    if(mDimensions != 2)
+        throw Exception("Only 2D access for OpenGL texture");
+
+    {
+        std::lock_guard<std::mutex> lock(mDataIsBeingAccessedMutex);
+        mDataIsBeingAccessed = true;
+    }
+    if(!m_GLtextureUpToDate) {
+        std::map<int, std::vector<GLint>> mChannelsToSwizzle = {
+                {1, {GL_RED, GL_RED, GL_RED, GL_ONE}},
+                {2, {GL_RED, GL_GREEN, GL_ZERO, GL_ONE}},
+                {3, {GL_RED, GL_GREEN, GL_BLUE, GL_ONE}},
+                {4, {GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA}}
+        };
+        std::map<DataType, std::map<int, std::pair<GLenum, GLenum>>> mChannelsToFormat = {
+                {TYPE_UINT8,
+                    {
+                        {1, {GL_R8UI, GL_RED_INTEGER}},
+                        {2, {GL_RG8UI, GL_RG_INTEGER}},
+                        {3, {GL_RGB8UI, GL_RGB_INTEGER}},
+                        {4, {GL_RGBA8UI, GL_RGBA_INTEGER}}
+                    }
+                },
+                {TYPE_INT8,
+                    {
+                        {1, {GL_R8I, GL_RED_INTEGER}},
+                        {2, {GL_RG8I, GL_RG_INTEGER}},
+                        {3, {GL_RGB8I, GL_RGB_INTEGER}},
+                        {4, {GL_RGBA8I, GL_RGBA_INTEGER}}
+                    }
+                },
+
+                {TYPE_UINT16,
+                        {
+                                {1, {GL_R16UI, GL_RED_INTEGER}},
+                                {2, {GL_RG16UI, GL_RG_INTEGER}},
+                                {3, {GL_RGB16UI, GL_RGB_INTEGER}},
+                                {4, {GL_RGBA16UI, GL_RGBA_INTEGER}}
+                        }
+                },
+                {TYPE_INT16,
+                        {
+                                {1, {GL_R16I, GL_RED_INTEGER}},
+                                {2, {GL_RG16I, GL_RG_INTEGER}},
+                                {3, {GL_RGB16I, GL_RGB_INTEGER}},
+                                {4, {GL_RGBA16I, GL_RGBA_INTEGER}}
+                        }
+                },
+                {TYPE_FLOAT,
+                        {
+                                {1, {GL_R32F, GL_RED}},
+                                {2, {GL_RG32F, GL_RG}},
+                                {3, {GL_RGB32F, GL_RGB}},
+                                {4, {GL_RGBA32F, GL_RGBA}}
+                        }
+                },
+        };
+        std::map<DataType, GLenum> mTypeToType = {
+                {TYPE_UINT8, GL_UNSIGNED_BYTE},
+                {TYPE_INT8, GL_BYTE},
+                {TYPE_UINT16, GL_UNSIGNED_SHORT},
+                {TYPE_INT16, GL_SHORT},
+                {TYPE_FLOAT, GL_FLOAT},
+        };
+        GLint internalFormat = mChannelsToFormat[mType][mChannels].first;
+        GLenum format = mChannelsToFormat[mType][mChannels].second;
+        if(compress) {
+            if(mType != TYPE_UINT8)
+                throw Exception("OpenGL texture compression only enabled for UINT8 images.");
+            switch(mChannels) {
+                case 1:
+                    internalFormat = GL_COMPRESSED_RED_RGTC1;
+                    format = GL_RED;
+                    break;
+                case 2:
+                    internalFormat = GL_COMPRESSED_RG_RGTC2;
+                    format = GL_RG;
+                    break;
+                case 3:
+                    internalFormat = GL_COMPRESSED_RGB;
+                    format = GL_RGB;
+                    break;
+                case 4:
+                    internalFormat = GL_COMPRESSED_RGBA;
+                    format = GL_RGBA;
+                    break;
+            }
+        }
+        GLenum GLtype = mTypeToType[mType];
+        GLint* swizzleMask = mChannelsToSwizzle[mChannels].data();
+
+        // Create OpenGl texture
+        glGenTextures(1, &m_GLtextureID);
+        glBindTexture(GL_TEXTURE_2D, m_GLtextureID);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Fix alignment issues with single channel images..
+        bool doCPUtransfer = true; // If GPU-GPU transfer is possible do that, but GPU-CPU-GPU transfer is fallback.
+        // If OpenGL interop is supported AND OpenCL has the data on the device..
+        // GL interop on compressed textures doesn't work
+        if(!compress && device->isOpenGLInteropSupported() && (mCLImagesIsUpToDate[device] || mCLBuffersIsUpToDate[device])) {
+            auto access = getOpenCLImageAccess(ACCESS_READ, device);
+            glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, mWidth, mHeight, 0, format, GLtype, nullptr);
+            glFinish();
+            // Create OpenCL Image from texture
+            try {
+                auto imageGL = cl::ImageGL(
+                        device->getContext(),
+                        CL_MEM_READ_WRITE,
+                        GL_TEXTURE_2D,
+                        0,
+                        m_GLtextureID
+                );
+
+                // Copy OpenCL image to the texture
+                std::vector<cl::Memory> v;
+                v.push_back(imageGL);
+                device->getCommandQueue().enqueueAcquireGLObjects(&v);
+                device->getCommandQueue().enqueueCopyImage(*access->get(), imageGL, createOrigoRegion(), createOrigoRegion(), createRegion(getSize()));
+                device->getCommandQueue().enqueueReleaseGLObjects(&v);
+                doCPUtransfer = false;
+            } catch(cl::Error &e) {
+                // Most likely the format was not supported
+                reportWarning() << "OpenGL interop was supported, but failed to transfer data. Error was: " << e.what() << reportEnd();
+            }
+        }
+        if(doCPUtransfer) {
+            // Copy data from CPU to GL texture
+            auto access = getImageAccess(ACCESS_READ);
+            glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, mWidth, mHeight, 0, format, GLtype, access->get());
+            glFinish();
+        }
+        glBindTexture(GL_TEXTURE_2D, 0);
+        m_GLtextureUpToDate = true;
+    }
+
+    return std::make_unique<OpenGLTextureAccess>(m_GLtextureID, std::dynamic_pointer_cast<Image>(mPtr.lock()));
+#else
+    throw Exception("Image::getOpenGLTextureAccess() is only available when FAST is built with visualization/Qt");
+#endif
+}
+
+bool Image::isSegmentationType() const {
+    if(!isInitialized())
+        throw Exception("Image was not initialized");
+    return mType == TYPE_UINT8 && mChannels == 1;
 }
 
 } // end namespace fast;

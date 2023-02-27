@@ -19,16 +19,13 @@ TEST_CASE("Segmentation volume reconstructor", "[SegmentationVolumeReconstructor
 
     auto segmentation = SegmentationNetwork::New();
     segmentation->load(Config::getTestDataPath() + "NeuralNetworkModels/jugular_vein_segmentation.pb");
-    //segmentation->setNrOfClasses(2);
-    //segmentation->load("/home/smistad/workspace/AAA-Ultrasound/phantom/models/phantom.pb");
     segmentation->setScaleFactor(1.0f / 255.0f);
-    segmentation->setOutputNode(0, "conv2d_23/truediv");
     segmentation->setInputConnection(streamer->getOutputPort());
 
     SegmentationVolumeReconstructor::pointer reconstructor = SegmentationVolumeReconstructor::New();
     reconstructor->setInputConnection(segmentation->getOutputPort());
 
-    SurfaceExtraction::pointer extraction = SurfaceExtraction::New();
+    SurfaceExtraction::pointer extraction = SurfaceExtraction::create();
     extraction->setInputConnection(reconstructor->getOutputPort());
 
     TriangleRenderer::pointer renderer = TriangleRenderer::New();

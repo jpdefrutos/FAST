@@ -1,5 +1,4 @@
-#ifndef ITKIMAGEIMPORTER_HPP_
-#define ITKIMAGEIMPORTER_HPP_
+#pragma once
 
 #include "FAST/ProcessObject.hpp"
 #include "FAST/Data/Image.hpp"
@@ -9,6 +8,12 @@
 
 namespace fast {
 
+/**
+ * @brief Imports and ITK image
+ *
+ * @ingroup importers
+ * @tparam TImage ITK image type
+ */
 template <class TImage>
 class FAST_EXPORT  ITKImageImporter : public ProcessObject {
     FAST_OBJECT(ITKImageImporter)
@@ -98,15 +103,14 @@ void fast::ITKImageImporter<TImage>::execute() {
     typename TImage::RegionType region = mInput->GetLargestPossibleRegion();
     unsigned int width = region.GetSize()[0];
     unsigned int height = region.GetSize()[1];
-    Image::pointer output = getOutputData<Image>();
     if(TImage::ImageDimension == 2) {
-        output->create(width, height, type, 1, Host::getInstance(), data);
+        auto output = Image::create(width, height, type, 1, Host::getInstance(), data);
+        addOutputData(0, output);
     } else if(TImage::ImageDimension == 3) {
         unsigned int depth = region.GetSize()[3];
-        output->create(width, height, depth, type, 1, Host::getInstance(), data);
+        auto output = Image::create(width, height, depth, type, 1, Host::getInstance(), data);
+        addOutputData(0, output);
     } else {
         throw Exception("The ITKImageImporter only supports 2D and 3D images.");
     }
 }
-
-#endif /* ITKIMAGEIMPORTER_HPP_ */

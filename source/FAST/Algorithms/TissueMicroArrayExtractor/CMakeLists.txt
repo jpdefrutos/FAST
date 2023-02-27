@@ -1,0 +1,5 @@
+if(FAST_MODULE_WholeSlideImaging)
+    fast_add_sources(TissueMicroArrayExtractor.hpp TissueMicroArrayExtractor.cpp)
+    fast_add_process_object(TissueMicroArrayExtractor TissueMicroArrayExtractor.hpp)
+    fast_add_test_sources(Tests.cpp)
+endif()

@@ -11,9 +11,9 @@ DICOMFileImporter::DICOMFileImporter() {
     createOutputPort<Image>(0);
 }
 
-void DICOMFileImporter::setFilename(std::string filename) {
-    mFilename = filename;
-    mIsModified = true;
+DICOMFileImporter::DICOMFileImporter(std::string filename, bool loadSeries) : FileImporter(filename) {
+    createOutputPort<Image>(0);
+    setLoadSeries(loadSeries);
 }
 
 void DICOMFileImporter::setLoadSeries(bool load) {
@@ -122,13 +122,12 @@ static void* inserSliceFromImage(const DicomImage &image, int width, int height,
 }
 
 void DICOMFileImporter::execute() {
-    if(mFilename == "")
+    if(m_filename == "")
         throw Exception("DICOMFileImporter needs filename to be set");
 
     DcmFileFormat fileformat;
-    OFCondition status = fileformat.loadFile(mFilename.c_str());
+    OFCondition status = fileformat.loadFile(m_filename.c_str());
     if(status.good()) {
-        Image::pointer output = getOutputData<Image>();
         // Get pixel spacing
         Float64 spacingX;
         Float64 spacingY;
@@ -143,7 +142,7 @@ void DICOMFileImporter::execute() {
                 throw Exception("Could not get series instance UID of DICOM file.");
 
             // Get all files in directory which has same series instance UID
-            std::string dirName = getDirName(mFilename);
+            std::string dirName = getDirName(m_filename);
             std::vector<std::string> files = getDirectoryList(dirName);
             std::vector<std::string> seriesFiles;
             for(auto&& file : files) {
@@ -157,7 +156,7 @@ void DICOMFileImporter::execute() {
             }
 
             // Get size and type of image
-            DicomImage image(mFilename.c_str());
+            DicomImage image(m_filename.c_str());
             const int width = image.getWidth();
             const int height = image.getHeight();
             const int depth = seriesFiles.size();
@@ -176,20 +175,22 @@ void DICOMFileImporter::execute() {
                 inserSliceFromImage(DicomImage(file.c_str()), width, height, sliceNr-1, data);
             }
 
-            output->create(image.getWidth(), image.getHeight(), seriesFiles.size(), type, 1, data);
+            auto output = Image::create(image.getWidth(), image.getHeight(), seriesFiles.size(), type, 1, data);
             output->setSpacing(spacingX, spacingY, spacingZ);
             deleteArray(data, type);
+            addOutputData(0, output);
         } else {
-            DicomImage image(mFilename.c_str());
+            DicomImage image(m_filename.c_str());
             DataType type;
             void* data = getDataFromImage(image, type);
 
-            output->create(image.getWidth(), image.getHeight(), type, 1, data);
+            auto output = Image::create(image.getWidth(), image.getHeight(), type, 1, data);
             output->setSpacing(spacingX, spacingY, 1);
             deleteArray(data, type);
+            addOutputData(0, output);
         }
     } else {
-        throw Exception("Error: cannot read DICOM file " + mFilename + "(" + std::string(status.text()) + ")");
+        throw Exception("Error: cannot read DICOM file " + m_filename + "(" + std::string(status.text()) + ")");
     }
 }
 

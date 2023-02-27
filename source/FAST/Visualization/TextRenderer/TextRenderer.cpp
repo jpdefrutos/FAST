@@ -8,17 +8,17 @@
 namespace fast {
 
 
-BoundingBox TextRenderer::getBoundingBox(bool transform) {
-    return BoundingBox(Vector3f(6,6,6));
+DataBoundingBox TextRenderer::getBoundingBox(bool transform) {
+    return DataBoundingBox(Vector3f(6,6,6));
 }
 
-TextRenderer::TextRenderer() {
+TextRenderer::TextRenderer(uint fontSize, Color color, TextStyleType style, TextPosition position, PositionType positionType) {
     createInputPort<Text>(0);
-    mStyle = STYLE_NORMAL;
-    m_position = POSITION_CENTER;
-    m_positionType = PositionType::STANDARD;
-	mFontSize = 28;
-	mColor = Color::Green();
+    setFontSize(fontSize);
+    setColor(color);
+    setStyle(style);
+    setPosition(position);
+    setPositionType(positionType);
     createStringAttribute("position", "Text position", "Position of text in view (center/bottom_left/bottom_right/top_left/top_right)", "top_left");
     createIntegerAttribute("font_size", "Font size", "Font size", mFontSize);
 
@@ -28,12 +28,14 @@ TextRenderer::TextRenderer() {
     });
 }
 
-void TextRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) {
-    std::lock_guard<std::mutex> lock(mMutex);
+void TextRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D,
+                        int viewWidth,
+                        int viewHeight) {
     if(!mode2D)
         throw Exception("TextRender is only implemented for 2D at the moment");
 
-    for(auto it : mDataToRender) {
+    auto dataToRender = getDataToRender();
+    for(auto it : dataToRender) {
         auto input = std::static_pointer_cast<Text>(it.second);
         uint inputNr = it.first;
 
@@ -152,8 +154,8 @@ void TextRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, floa
         int width, height;
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-        const float scale = 1.0f / m_view->width();
-        const float scale2 = 1.0f / m_view->height();
+        const float scale = 1.0f / viewWidth;
+        const float scale2 = 1.0f / viewHeight;
         const int padding = 15;
         Vector3f position;
         if(m_positionType == PositionType::STANDARD) {
@@ -187,7 +189,7 @@ void TextRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, floa
             float textHeight = mTextUsed[inputNr]->getTextHeight();
             float textSpacing = textHeight/height;
             float textWidthInMM = textSpacing*width;
-            auto T = SceneGraph::getEigenAffineTransformationFromData(mTextUsed[inputNr]);
+            auto T = SceneGraph::getEigenTransformFromData(mTextUsed[inputNr]);
             m_worldPosition.x() = T.translation().x();
             m_worldPosition.y() = T.translation().y();
             if(m_centerPosition) {

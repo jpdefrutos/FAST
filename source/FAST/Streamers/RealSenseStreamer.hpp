@@ -1,5 +1,4 @@
-#ifndef FAST_KINECT_STREAMER_HPP_
-#define FAST_KINECT_STREAMER_HPP_
+#pragma once
 
 #include "FAST/ProcessObject.hpp"
 #include "Streamer.hpp"
@@ -14,18 +13,24 @@ class Image;
 class MeshVertex;
 
 /**
- * \brief Streams data RGB and depth data from a kinect device.
+ * @brief Streams data RGB and depth data from an Intel RealSense camera
  *
  * The RGB camera and depth stream are registered so that a color value for each point in the
  * point cloud is established.
  *
- * Output port 0: Registered RGB image
- * Output port 1: Registered depth image
- * Output port 2: Registered point cloud
+ * Default streaming mode is StreamingMode::NewestFrameOnly
+ *
+ * <h3>Output ports</h3>
+ * - 0: Image - Registered RGB image
+ * - 1: Image - Registered depth image
+ * - 2: Mesh - Registered point cloud
+ *
+ * @ingroup streamers
  */
 class FAST_EXPORT RealSenseStreamer : public Streamer {
-    FAST_OBJECT(RealSenseStreamer);
+    FAST_PROCESS_OBJECT(RealSenseStreamer);
     public:
+        FAST_CONSTRUCTOR(RealSenseStreamer)
         /**
          * Set maximum range in millimeters. All points above this range will be dropped.
          * @param range
@@ -52,8 +57,6 @@ class FAST_EXPORT RealSenseStreamer : public Streamer {
         MeshVertex getPoint(int x, int y);
         ~RealSenseStreamer();
     private:
-        RealSenseStreamer();
-
         void execute();
         void generateStream() override;
 
@@ -67,10 +70,8 @@ class FAST_EXPORT RealSenseStreamer : public Streamer {
         uint mNrOfFrames;
 
         rs2_intrinsics* intrinsics;
-        SharedPointer<Image> mDepthImage;
-        SharedPointer<Image> mColorImage;
+        std::shared_ptr<Image> mDepthImage;
+        std::shared_ptr<Image> mColorImage;
 };
 
 }
-
-#endif

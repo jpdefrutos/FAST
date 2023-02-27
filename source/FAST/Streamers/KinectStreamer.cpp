@@ -22,6 +22,7 @@ KinectStreamer::KinectStreamer() {
     mIsModified = true;
     mPointCloudFilterEnabled = false;
     registration = NULL;
+    setStreamingMode(StreamingMode::NewestFrameOnly);
 }
 
 void KinectStreamer::setPointCloudFiltering(bool enabled) {
@@ -134,8 +135,7 @@ void KinectStreamer::producerStream() {
         auto * depth_data = (float*)undistorted.data;
         auto * rgb_data = (unsigned char*)registered.data;
 
-        Image::pointer depthImage = Image::New();
-        depthImage->create(512, 424, TYPE_FLOAT, 1, depth_data);
+        Image::pointer depthImage = Image::create(512, 424, TYPE_FLOAT, 1, depth_data);
 
         if(rgb->format == libfreenect2::Frame::Format::BGRX) {
             // Have to swap B and R channel
@@ -146,8 +146,7 @@ void KinectStreamer::producerStream() {
             }
         }
 
-        auto rgbImage = Image::New();
-        rgbImage->create(512, 424, TYPE_UINT8, 4, rgb_data);
+        auto rgbImage = Image::create(512, 424, TYPE_UINT8, 4, rgb_data);
         auto imageAccess = rgbImage->getImageAccess(ACCESS_READ_WRITE);
         uchar* rgb_data2 = (uchar*)imageAccess->get();
         auto depthAccess = depthImage->getImageAccess(ACCESS_READ_WRITE);
@@ -203,8 +202,7 @@ void KinectStreamer::producerStream() {
                 }
             }
         }
-        auto cloud = Mesh::New();
-        cloud->create(points);
+        auto cloud = Mesh::create(points);
         imageAccess->release();
         depthAccess->release();
 

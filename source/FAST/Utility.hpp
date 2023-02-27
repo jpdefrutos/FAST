@@ -1,5 +1,4 @@
-#ifndef UTILITY_HPP_
-#define UTILITY_HPP_
+#pragma once
 #include "FAST/ExecutionDevice.hpp"
 #include "FAST/Data/DataTypes.hpp"
 #include <algorithm>
@@ -171,6 +170,13 @@ FAST_EXPORT void createDirectories(std::string path);
 FAST_EXPORT bool fileExists(std::string filename);
 
 /**
+ * @brief Returns size in bytes of file
+ * @param filename
+ * @return size in bytes
+ */
+FAST_EXPORT uint64_t fileSize(std::string filename);
+
+/**
  * Returns a list of all files in a directory
  * @param path
  * @param getFiles Set to true to find files in directory
@@ -187,6 +193,13 @@ FAST_EXPORT std::vector<std::string> getDirectoryList(std::string path, bool get
  * @return
  */
 FAST_EXPORT std::string getDirName(std::string path);
+
+/**
+ * Returns the name of a file of a path. Example: getFileName("/home/user/something.txt") returns something.txt
+ * @param path
+ * @return
+ */
+FAST_EXPORT std::string getFileName(std::string path);
 
 /**
  * Returns a string of the current date
@@ -248,8 +261,31 @@ std::unique_ptr<T> make_uninitialized_unique(std::size_t size) {
     return std::unique_ptr<T>(new typename std::remove_extent<T>::type[size]);
 }
 
+/**
+ * Extract the contents of a zip file to a given destination.
+ * @param zipFilepath path to zip file to extract
+ * @param destination path to where to extract the conents of the zip file
+ */
+FAST_EXPORT void extractZipFile(std::string zipFilepath, std::string destination);
 
+/**
+ * @brief Convert string to only upper case
+ * @return upper case string
+ */
+FAST_EXPORT std::string stringToLower(std::string);
+
+/**
+ * @brief Convert string to only lower case
+ * @return lower case string
+ */
+FAST_EXPORT std::string stringToUpper(std::string);
+
+/**
+ * @brief Generate random alphanumeric string of a given length
+ * @param length
+ * @return random string
+ */
+FAST_EXPORT std::string generateRandomString(int length);
 
 } // end namespace fast
 
-#endif /* UTILITY_HPP_ */

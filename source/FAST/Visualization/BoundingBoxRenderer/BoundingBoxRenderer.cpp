@@ -1,70 +1,121 @@
 #include "BoundingBoxRenderer.hpp"
 #include "FAST/Data/BoundingBox.hpp"
 #include "FAST/Data/SpatialDataObject.hpp"
-
-#if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/gl.h>
-#else
-#include <GL/gl.h>
-#endif
+#include <FAST/Visualization/View.hpp>
 
 namespace fast {
 
-BoundingBoxRenderer::BoundingBoxRenderer() {
-    createInputPort<SpatialDataObject>(0, false);
+BoundingBoxRenderer::BoundingBoxRenderer(float borderSize, std::map<uint, Color> labelColors) {
+    m_2Donly = true;
+    createInputPort<BoundingBoxSet>(0, false);
+
+    createShaderProgram({
+        Config::getKernelSourcePath() + "Visualization/BoundingBoxRenderer/BoundingBoxRenderer.vert",
+        Config::getKernelSourcePath() + "Visualization/BoundingBoxRenderer/BoundingBoxRenderer.frag",
+        Config::getKernelSourcePath() + "Visualization/BoundingBoxRenderer/BoundingBoxRenderer.geom",
+    });
+
+    setColors(labelColors);
+    setBorderSize(borderSize);
 }
 
-void BoundingBoxRenderer::execute() {
-    std::lock_guard<std::mutex> lock(mMutex);
 
-    for(uint i = 0; i < getNrOfInputConnections(); ++i) {
-        SpatialDataObject::pointer data = getInputData<SpatialDataObject>(i);
-        mBoxesToRender[i] = data->getTransformedBoundingBox();
-    }
+BoundingBoxRenderer::~BoundingBoxRenderer() {
+	glDeleteBuffers(1, &m_colorsUBO);
 }
 
-void
-BoundingBoxRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) {
-    std::lock_guard<std::mutex> lock(mMutex);
+void BoundingBoxRenderer::setBorderSize(float borderSize) {
+    m_borderSize = borderSize;
+}
 
-    // Draw each bounding box
-    std::unordered_map<uint, BoundingBox>::iterator it;
-    glBegin(GL_LINES);
-    glColor3f(0.0f, 1.0f, 0.0f);
-    for(it = mBoxesToRender.begin(); it != mBoxesToRender.end(); ++it) {
-        BoundingBox box = it->second;
-        MatrixXf corners = box.getCorners();
-        // Should be 12 lines in total
-        for(uint i = 0; i < 8; ++i) {
-            Vector3f A = corners.row(i);
-            for(uint j = 0; j < i; ++j) {
-                Vector3f B = corners.row(j);
-                // If only 1 coordinate is different, draw the line
-                if((A.x() != B.x() ? 1 : 0) +
-                    (A.y() != B.y() ? 1 : 0) +
-                    (A.z() != B.z() ? 1 : 0) == 1) {
-                    glVertex3f(A.x(), A.y(), A.z());
-                    glVertex3f(B.x(), B.y(), B.z());
-                }
+void BoundingBoxRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D,
+                               int viewWidth,
+                               int viewHeight) {
+    if(!mode2D)
+        throw Exception("BoundingBoxRenderer has only been implemented for 2D so far");
 
-            }
+    auto dataToRender = getDataToRender();
+    createColorUniformBufferObject();
+
+	glDisable(GL_DEPTH_TEST);
+    activateShader();
+    setShaderUniform("perspectiveTransform", perspectiveMatrix);
+    setShaderUniform("viewTransform", viewingMatrix);
+    auto colorsIndex = glGetUniformBlockIndex(getShaderProgram(), "Colors");   
+	glUniformBlockBinding(getShaderProgram(), colorsIndex, 0);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_colorsUBO); 
+    // For all input data
+    for(auto it : dataToRender) {
+        auto boxes = std::static_pointer_cast<BoundingBoxSet>(it.second);
+        float borderSize = m_borderSize;
+        if(borderSize <= 0)
+            borderSize = boxes->getMinimumSize()*0.1f;
+        setShaderUniform("borderSize", borderSize);
+        if(boxes->getNrOfLines() == 0)
+            continue;
+
+        // TODO if VAO already exists, and data has not changed...
+
+        // Delete old VAO
+        if(mVAO.count(it.first) > 0) {
+            glDeleteVertexArrays(1, &mVAO[it.first]);
         }
+        // Create VAO
+        uint VAO_ID;
+        glGenVertexArrays(1, &VAO_ID);
+        mVAO[it.first] = VAO_ID;
+        glBindVertexArray(VAO_ID);
+
+        Affine3f transform = Affine3f::Identity();
+        // If rendering is in 2D mode we skip any transformations
+        if(!mode2D) {
+            transform = SceneGraph::getEigenTransformFromData(it.second);
+        }
+        setShaderUniform("transform", transform);
+
+        Color color = m_defaultColor;
+        
+        auto access = boxes->getOpenGLAccess(ACCESS_READ);
+
+        // Coordinates
+        GLuint coordinatesVBO = access->getCoordinateVBO();
+        glBindBuffer(GL_ARRAY_BUFFER, coordinatesVBO);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        // Color             
+        bool useGlobalColor = true;
+        //setShaderUniform("useGlobalColor", useGlobalColor);
+        //setShaderUniform("globalColor", color.asVector());
+
+        // Label data
+        GLuint labelVBO = access->getLabelVBO();
+		glBindBuffer(GL_ARRAY_BUFFER, labelVBO);
+		glVertexAttribIPointer(1, 1, GL_UNSIGNED_BYTE, sizeof(uchar), nullptr);
+        glEnableVertexAttribArray(1);
+
+		GLuint EBO = access->getLinesEBO();
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+		glDrawElements(GL_LINES, boxes->getNrOfLines() * 2, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
     }
-    glEnd();
+    deactivateShader();
+    glFinish(); // Fixes random crashes in OpenGL on NVIDIA windows due to some interaction with the text renderer. Suboptimal solution as glFinish is a blocking sync operation.
+    glEnable(GL_DEPTH_TEST);
 }
 
-BoundingBox BoundingBoxRenderer::getBoundingBox() {
-    std::vector<Vector3f> coordinates;
-    std::unordered_map<uint, BoundingBox>::iterator it;
-    for(it = mBoxesToRender.begin(); it != mBoxesToRender.end(); ++it) {
-        BoundingBox transformedBoundingBox = it->second;
-        MatrixXf corners = transformedBoundingBox.getCorners();
-        for(uint j = 0; j < 8; j++) {
-            coordinates.push_back((Vector3f)corners.row(j));
-        }
-    }
-    return BoundingBox(coordinates);
+float BoundingBoxRenderer::getBorderSize() const {
+    return m_borderSize;
+}
+
+std::string BoundingBoxRenderer::attributesToString() {
+    std::stringstream ss;
+    ss << "Attribute disabled " << (isDisabled() ? "true" : "false") << "\n";
+    return ss.str();
+}
+
+void BoundingBoxRenderer::loadAttributes() {
+    Renderer::loadAttributes();
 }
 
 }

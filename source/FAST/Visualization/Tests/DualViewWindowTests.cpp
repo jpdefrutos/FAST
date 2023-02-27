@@ -4,7 +4,7 @@
 #include "FAST/Visualization/DualViewWindow.hpp"
 #include "FAST/Visualization/TriangleRenderer/TriangleRenderer.hpp"
 #include "FAST/Streamers/ImageFileStreamer.hpp"
-#include "FAST/Algorithms/GaussianSmoothingFilter/GaussianSmoothingFilter.hpp"
+#include "FAST/Algorithms/GaussianSmoothing/GaussianSmoothing.hpp"
 #include "FAST/Algorithms/SurfaceExtraction/SurfaceExtraction.hpp"
 
 using namespace fast;
@@ -18,16 +18,15 @@ TEST_CASE("DualViewWindow with horizontal mode", "[fast][DualViewWindow][visual]
 
     ImageFileStreamer::pointer mhdStreamer = ImageFileStreamer::New();
     mhdStreamer->setFilenameFormat(Config::getTestDataPath()+"/US/Ball/US-3Dt_#.mhd");
-    //mhdStreamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
 
-    SurfaceExtraction::pointer extractor = SurfaceExtraction::New();
+    SurfaceExtraction::pointer extractor = SurfaceExtraction::create();
     extractor->setInputConnection(mhdStreamer->getOutputPort());
     extractor->setThreshold(200);
 
     TriangleRenderer::pointer renderer2 = TriangleRenderer::New();
     renderer2->addInputConnection(extractor->getOutputPort());
 
-    DualViewWindow::pointer window = DualViewWindow::New();
+    auto window = DualViewWindow::create();
     window->addRendererToBottomRightView(renderer);
     window->addRendererToTopLeftView(renderer2);
     window->setTimeout(2000);
@@ -44,20 +43,18 @@ TEST_CASE("DualViewWindow with vertical mode", "[fast][DualViewWindow][visual]")
 
     ImageFileStreamer::pointer mhdStreamer = ImageFileStreamer::New();
     mhdStreamer->setFilenameFormat(Config::getTestDataPath()+"/US/Ball/US-3Dt_#.mhd");
-    //mhdStreamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
 
-    SurfaceExtraction::pointer extractor = SurfaceExtraction::New();
+    SurfaceExtraction::pointer extractor = SurfaceExtraction::create();
     extractor->setInputConnection(mhdStreamer->getOutputPort());
     extractor->setThreshold(200);
 
     TriangleRenderer::pointer renderer2 = TriangleRenderer::New();
     renderer2->addInputConnection(extractor->getOutputPort());
 
-    DualViewWindow::pointer window = DualViewWindow::New();
-    window->addRendererToBottomRightView(renderer);
-    window->addRendererToTopLeftView(renderer2);
+    auto window = DualViewWindow::create()
+            ->connectRight(renderer)
+            ->connectLeft(renderer2);
     window->setVerticalMode();
     window->setTimeout(2000);
-
-    CHECK_NOTHROW(window->start());
+    CHECK_NOTHROW(window->run());
 }

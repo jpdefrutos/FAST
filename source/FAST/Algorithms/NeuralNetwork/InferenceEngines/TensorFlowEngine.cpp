@@ -1,7 +1,5 @@
 #include "TensorFlowEngine.hpp"
 
-//#define TF_CPP_MIN_LOG_LEVEL 5
-//#define TF_CPP_MIN_VLOG_LEVEL 5
 // Windows hack for removing need for protobuf
 #ifdef WIN32
 #include <google/protobuf/stubs/logging.h>
@@ -24,6 +22,12 @@
 //#include <tensorflow/cc/framework/ops.h>
 //#include <tensorflow/core/platform/logging.h>
 #include <FAST/Utility.hpp>
+#include <tensorflow/cc/saved_model/loader.h>
+#include <tensorflow/cc/saved_model/loader_util.h>
+#include <tensorflow/cc/saved_model/tag_constants.h>
+#include <tensorflow/cc/saved_model/reader.h>
+#include <tensorflow/c/c_api.h>
+#include <tensorflow/c/tf_status.h>
 
 
 namespace fast {
@@ -35,7 +39,7 @@ class TensorFlowTensorWrapper {
         tensorflow::Tensor tensor;
 };
 
-void TensorFlowTensor::create(TensorFlowTensorWrapper* wrapper) {
+TensorFlowTensor::TensorFlowTensor(TensorFlowTensorWrapper* wrapper) {
     m_tensorflowTensor = wrapper;
     auto shape = m_tensorflowTensor->tensor.shape();
     TensorShape fastShape;
@@ -48,7 +52,7 @@ void TensorFlowTensor::create(TensorFlowTensorWrapper* wrapper) {
     if(m_shape.getDimensions() >= 3) {
         const int width = m_shape[m_shape.getDimensions() - 2];
         const int height = m_shape[m_shape.getDimensions() - 3];
-        mBoundingBox = BoundingBox(Vector3f(width, height, 1));
+        mBoundingBox = DataBoundingBox(Vector3f(width, height, 1));
     }
     /*
     // Unnecessary copy..
@@ -165,8 +169,7 @@ void TensorFlowEngine::run() {
     for(int j = 0; j < outputNames.size(); ++j) {
         const std::string outputName = outputNames[j];
         const NetworkNode node = mOutputNodes[outputName];
-        auto tensor = TensorFlowTensor::New();
-        tensor->create(new TensorFlowTensorWrapper(std::move(output_tensors[j])));
+        auto tensor = TensorFlowTensor::create(new TensorFlowTensorWrapper(std::move(output_tensors[j])));
         mOutputNodes[outputName].data = tensor;
 	}
 	reportInfo() << "Finished parsing output" << reportEnd();
@@ -174,44 +177,70 @@ void TensorFlowEngine::run() {
 
 
 void TensorFlowEngine::load() {
-	const auto networkFilename = getFilename();
-	tensorflow::SessionOptions options;
-	tensorflow::ConfigProto &config = options.config;
-#ifndef WIN32
-    // These lines cause linking issues on windows
+    // Setup tensorflow session options
+    tensorflow::SessionOptions options;
+    tensorflow::ConfigProto &config = options.config;
     config.mutable_gpu_options()->set_allow_growth(true); // Set this so that tensorflow will not use up all GPU memory
-    if(m_deviceIndex >= 0)
-        config.mutable_gpu_options()->set_visible_device_list(std::to_string(m_deviceIndex));
-#endif
-    /*
-	tensorflow::GPUOptions* gpuOptions = config.mutable_gpu_options();
-	gpuOptions->set_allow_growth(true); 
-	//gpuOptions->set_per_process_gpu_memory_fraction(0.5);
-    */
-	mSession.reset(tensorflow::NewSession(options));
+    if (m_deviceType == InferenceDeviceType::CPU) {
+        config.mutable_gpu_options()->set_visible_device_list(""); // Hide devices to force CPU execution
+    } else if (m_deviceIndex >= 0) {
+        config.mutable_gpu_options()->set_visible_device_list(std::to_string(m_deviceIndex)); // Use specific GPU
+    }
+
 	tensorflow::GraphDef tensorflow_graph;
 
-	{
+    const auto networkFilename = getFilename();
+	if(networkFilename.substr(networkFilename.size()-3) == ".pb" || tensorflow::MaybeSavedModelDirectory(networkFilename) == false) {
+	    // Load a frozen protobuf file (.pb)
         if(!fileExists(networkFilename))
             throw Exception(networkFilename + " does not exist");
-		reportInfo() << "Loading network file: " << networkFilename << reportEnd();
-		tensorflow::Status s = ReadBinaryProto(tensorflow::Env::Default(), networkFilename, &tensorflow_graph);
-		if (!s.ok()) {
-			throw Exception("Could not read TensorFlow graph file " + networkFilename);
-		}
+        reportInfo() << "Loading network file: " << networkFilename << reportEnd();
+        tensorflow::Status s = ReadBinaryProto(tensorflow::Env::Default(), networkFilename, &tensorflow_graph);
+        if (!s.ok()) {
+            throw Exception("Could not read TensorFlow graph file " + networkFilename);
+        }
+        reportInfo() << "Creating session." << reportEnd();
+        mSession.reset(tensorflow::NewSession(options));
+        s = mSession->Create(tensorflow_graph);
+        if (!s.ok()) {
+            throw Exception("Could not create TensorFlow Graph: " + s.error_message());
+        }
+	} else {
+	    // Load a model stored in the SavedModel format
+        mSavedModelBundle = std::make_unique<tensorflow::SavedModelBundle>();
+        tensorflow::RunOptions runOptions;
+        auto s = tensorflow::LoadSavedModel(options, runOptions, networkFilename, {tensorflow::kSavedModelTagServe}, mSavedModelBundle.get());
+        if(!s.ok()) {
+            throw Exception("Could not read TensorFlow SavedModel from " + networkFilename);
+        }
+        tensorflow::MetaGraphDef metaGraphDef = mSavedModelBundle->meta_graph_def;
+        mSession.reset(mSavedModelBundle->GetSession());
+        tensorflow_graph = metaGraphDef.graph_def();
 	}
 
-	bool nodesSpecified = true;
+	// Analyze nodes
     int inputCounter = 0;
-	if(mInputNodes.size() == 0) {
-		nodesSpecified = false;
-	}
+	int outputCounter = 0;
+    const bool inputsSpecified = !mInputNodes.empty();
+	const bool outputsSpecified = !mOutputNodes.empty();
 
     for(int i = 0; i < tensorflow_graph.node_size(); ++i) {
 		tensorflow::NodeDef node = tensorflow_graph.node(i);
-		if(mInputNodes.count(node.name()) > 0) {
-		}
-		if(node.op() == "Placeholder") {
+        auto shape = getShape(node);
+        // If node has not been specified by user, we need to add it
+        // and thus know its type (fast image or tensor)
+        // It is assumed to be an image if input shape has at least 4 dimensions
+        NodeType type = NodeType::TENSOR;
+        if(shape.getDimensions() >= 4) {
+            //reportInfo() << "Assuming node is an image" << reportEnd();
+            type = NodeType::IMAGE;
+        } else if(shape.getDimensions() > 0) {
+            //reportInfo() << "Assuming node is a tensor" << reportEnd();
+        } else {
+        }
+        if(node.op() == "Placeholder") {
+            if(shape.getDimensions() == 0)
+                continue;
 			if(node.name().find("keras_learning_phase") != std::string::npos) {
 				//mLearningPhaseTensors.insert(node.name());
 				mLearningPhaseTensors.push_back(node.name());
@@ -220,47 +249,53 @@ void TensorFlowEngine::load() {
 				// Get its shape
 				// Input nodes use the Op Placeholder
 				reportInfo() << "Found input node: " << i << " with name " << node.name() << reportEnd();
-				auto shape = getShape(node);
 				reportInfo() << "Node has shape " << shape.toString() << reportEnd();
 				if(mInputNodes.count(node.name()) == 0) {
-					if(nodesSpecified) {
-						throw Exception("Encountered unknown node " + node.name());
-					}
 					reportInfo() << "Node was not specified by user" << reportEnd();
-					// If node has not been specified by user, we need to add it
-					// and thus know its type (fast image or tensor)
-					// It is assumed to be an image if input shape has at least 4 dimensions
-					NodeType type = NodeType::TENSOR;
-					if(shape.getKnownDimensions() >= 2) {
-						reportInfo() << "Assuming node is an image" << reportEnd();
-						type = NodeType::IMAGE;
-					} else {
-						reportInfo() << "Assuming node is a tensor" << reportEnd();
-					}
-					addInputNode(inputCounter, tensorflow_graph.node(0).name(), type, shape);
+
+                    if(inputsSpecified) {
+                        throw Exception("Encountered unknown node " + node.name());
+                    }
+					addInputNode(inputCounter, node.name(), type, shape);
 					++inputCounter;
-				} 
+				} else {
+				    // If shape that was given was empty, add the detected one here
+				    if(mInputNodes[node.name()].shape.empty())
+				        mInputNodes[node.name()].shape = shape;
+				}
 			}
+        } else if(node.name().find("StatefulPartitionedCall") != std::string::npos) {
+		    if(outputsSpecified) {
+                reportInfo() << "Found output node " << node.name() << reportEnd();
+                if(mOutputNodes.count(node.name()) > 0) {
+		            reportInfo() << "Node was defined by user at id " << mOutputNodes[node.name()].portID  << reportEnd();
+		            if(mOutputNodes[node.name()].shape.empty())
+		                mOutputNodes[node.name()].shape = shape;
+		        }
+		    } else if(node.name() == "StatefulPartitionedCall") {
+                reportWarning() << "No output nodes specified by user, FAST is guessing it is the node with name " << node.name() << reportEnd();
+                addOutputNode(outputCounter, node.name(), type, shape);
+                ++outputCounter;
+		    }
 		}
 	}
 
-	reportInfo() << "Creating session." << reportEnd();
-	tensorflow::Status s = mSession->Create(tensorflow_graph);
-	if (!s.ok()) {
-		throw Exception("Could not create TensorFlow Graph: " + s.error_message());
-	}
-
-	//tensorflow::graph::SetDefaultDevice("/gpu:0", &tensorflow_graph);
+    // If no output nodes, guess that last node is the output node
+    if(mOutputNodes.empty()) {
+        tensorflow::NodeDef node = tensorflow_graph.node(tensorflow_graph.node_size()-1);
+        reportWarning() << "No output nodes were given to TensorFlow engine, FAST is guessing it is the last node with name " << node.name() << reportEnd();
+        addOutputNode(0, node.name());
+    }
 
 	// Clear the proto to save memory space.
 	tensorflow_graph.Clear();
+
 	reportInfo() << "TensorFlow graph loaded from: " << networkFilename << reportEnd();
 
 	setIsLoaded(true);
 }
 
 TensorFlowEngine::TensorFlowEngine() {
-
 }
 
 TensorFlowEngine::~TensorFlowEngine() {
@@ -277,8 +312,49 @@ std::string TensorFlowEngine::getName() const {
     return "TensorFlow";
 }
 
-std::string TensorFlowEngine::getDefaultFileExtension() const {
-    return "pb";
+std::vector<InferenceDeviceInfo> TensorFlowEngine::getDeviceList() {
+    std::vector<InferenceDeviceInfo> result;
+    InferenceDeviceInfo cpu;
+    cpu.type = InferenceDeviceType::CPU;
+    cpu.index = 0;
+    result.push_back(cpu);
+#ifdef FAST_TENSORFLOW_CUDA
+    {
+        // TODO how to query number of devices?
+        InferenceDeviceInfo device;
+        device.type = InferenceDeviceType::GPU;
+        device.index = 0;
+        result.push_back(device);
+    }
+#endif
+#ifdef FAST_TENSORFLOW_ROCM
+    {
+        // TODO ROCm how?
+        InferenceDeviceInfo device;
+        device.type = InferenceDeviceType::GPU;
+        device.index = 0;
+        result.push_back(device);
+    }
+#endif
+    return result;
+}
+
+void TensorFlowEngine::loadCustomPlugins(std::vector<std::string> filenames) {
+    if(isLoaded())
+        throw Exception("You must call loadCustomPlugin before loading the model (e.g. load())");
+    for(auto& filename : filenames) {
+        if (!fileExists(filename))
+            throw FileNotFoundException(filename);
+
+        TF_Status *status = TF_NewStatus();
+        TF_Library *library = TF_LoadLibrary(filename.c_str(), status);
+        if(TF_GetCode(status) == TF_OK) {
+            reportInfo() << "Plugin " << filename << " loaded in TensorFlowEngine" << reportEnd();
+        } else {
+            auto message = TF_Message(status);
+            reportError() << "Plugin " << filename << " FAILED to load in TensorFlowEngine. Message: " << message << reportEnd();
+        }
+    }
 }
 
 }
