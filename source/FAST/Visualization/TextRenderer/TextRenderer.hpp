@@ -9,10 +9,17 @@ namespace fast {
 class View;
 class Text;
 
+/**
+ * @brief Renders Text data
+ *
+ * Renders text data objects.
+ *
+ * @ingroup renderers
+ */
 class FAST_EXPORT  TextRenderer : public Renderer {
-    FAST_OBJECT(TextRenderer)
+    FAST_PROCESS_OBJECT(TextRenderer)
     public:
-        BoundingBox getBoundingBox(bool transform) override;
+        DataBoundingBox getBoundingBox(bool transform) override;
         enum TextStyleType {
             STYLE_NORMAL,
             STYLE_BOLD,
@@ -32,6 +39,13 @@ class FAST_EXPORT  TextRenderer : public Renderer {
                 VIEW,
                 WORLD
         };
+        FAST_CONSTRUCTOR(TextRenderer,
+                         uint, fontSize, = 28,
+                         Color, color, = Color::Green(),
+                         TextStyleType, type, = STYLE_NORMAL,
+                         TextPosition, position, = POSITION_CENTER,
+                         PositionType, positionType, = PositionType::STANDARD
+        )
         void setPosition(TextPosition position);
         /**
          * Set text position in normalization view position (x,y 0-1)
@@ -54,13 +68,14 @@ class FAST_EXPORT  TextRenderer : public Renderer {
         void setFontSize(uint fontSize);
         void setColor(Color color);
         void setStyle(TextStyleType);
-        void draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) override;
+        void
+        draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D, int viewWidth,
+             int viewHeight) override;
         void loadAttributes();
     private:
-        TextRenderer();
 
         std::unordered_map<uint, uint> mTexturesToRender;
-        std::unordered_map<uint, SharedPointer<Text>> mTextUsed;
+        std::unordered_map<uint, std::shared_ptr<Text>> mTextUsed;
         std::unordered_map<uint, uint> mVAO;
         std::unordered_map<uint, uint> mVBO;
         std::unordered_map<uint, uint> mEBO;

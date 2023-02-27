@@ -1,6 +1,5 @@
 #pragma once
 
-#include "FAST/AffineTransformation.hpp"
 #include "FAST/Data/Color.hpp"
 #include "Renderer.hpp"
 #include "Plane.hpp"
@@ -26,6 +25,8 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
         void mousePressEvent(QMouseEvent* event);
         void mouseReleaseEvent(QMouseEvent* event);
         void wheelEvent(QWheelEvent* event);
+        void changeEvent(QEvent* event);
+        bool eventFilter(QObject* object, QEvent* event);
         void setMaximumFramerate(unsigned int framerate);
         void setCameraInputConnection(DataChannel::pointer port);
         void set2DMode();
@@ -54,6 +55,7 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
            Level 0.5 makes images in the view half its size. Level 2 makes images in the view double in size.
          */
         void setZoom(float zoom);
+        QGLWidget* asQGLWidget() { return (QGLWidget*)this; }
     private:
         uint m_FBO = 0;
         uint m_textureColor = 0;
@@ -101,13 +103,12 @@ class FAST_EXPORT  View : public QGLWidget, public ProcessObject, protected QOpe
         void paintGL();
         void resizeGL(int width, int height);
 		void updateRenderersInput(int executeToken);
-		void updateRenderers();
-		void lockRenderers();
-		void unlockRenderers();
+		void updateRenderers(int executeToken);
 		void stopRenderers();
 		void resetRenderers();
 
 		std::mutex m_mutex;
+		std::atomic_bool m_initialized = false;
 
     friend class ComputationThread;
 

@@ -6,6 +6,8 @@
 #include <windows.h>
 #include <direct.h> // Needed for _mkdir
 #include <io.h> // needed for _access_s
+#include <sys/types.h>
+#include <sys/stat.h> // _stat
 #else
 // Needed for making directory
 #include <sys/types.h>
@@ -17,6 +19,8 @@
 #include <GL/gl.h>
 #endif
 #endif
+#include <zip/zip.h>
+#include <random>
 
 namespace fast {
 
@@ -670,7 +674,9 @@ void createDirectories(std::string path) {
 
 bool fileExists(std::string filename) {
 #ifdef _WIN32
-    return _access_s(filename.c_str(), 0) == 0;
+    //return _access_s(filename.c_str(), 0) == 0;
+    struct __stat64 stat_buf;
+    return (_stat64(filename.c_str(), &stat_buf) == 0);
 #else
     struct stat buffer;
     return (stat (filename.c_str(), &buffer) == 0);
@@ -679,7 +685,10 @@ bool fileExists(std::string filename) {
 
 bool isFile(const std::string& path) {
 #ifdef _WIN32
-    throw Exception("Not implemented");
+    auto dwAttrib = GetFileAttributesA(path.c_str());
+
+    return (dwAttrib != INVALID_FILE_ATTRIBUTES && 
+           !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 #else
     struct stat buf;
     stat(path.c_str(), &buf);
@@ -689,17 +698,24 @@ bool isFile(const std::string& path) {
 
 bool isDir(const std::string& path) {
 #ifdef _WIN32
-    throw Exception("Not implemented");
+	auto ftyp = GetFileAttributesA(path.c_str());
+	if(ftyp == INVALID_FILE_ATTRIBUTES)
+		return false; 
+
+	if(ftyp & FILE_ATTRIBUTE_DIRECTORY)
+		return true;
+
+	return false; 
 #else
     struct stat buf;
-    stat(path.c_str(), &buf);
-    return S_ISDIR(buf.st_mode);
+    auto res = stat(path.c_str(), &buf);
+    return res == 0 && S_ISDIR(buf.st_mode); // Exists and is directory
 #endif
 }
 
 std::string join(std::string path) {
     // Remove all trailing /
-    while(path[path.size()-2] == '/')
+    while(path[path.size()-1] == '/')
         path.substr(0, path.size()-1);
     return path;
 }
@@ -730,8 +746,9 @@ std::vector<std::string> getDirectoryList(std::string path, bool getFiles, bool 
 			const std::string name = data.cFileName;
             if (name == "." || name == "..")
                 continue;
-            if(getDirectories && (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                list.push_back(name);
+            if(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                if(getDirectories)
+					list.push_back(name);
 			} else if(getFiles) {
                 list.push_back(name);
 			}
@@ -771,6 +788,15 @@ std::string getDirName(std::string path) {
     return path;
 }
 
+std::string getFileName(std::string path) {
+    // Replace \ with / so that this will work on windows
+    path = replace(path, "\\", "/");
+    auto pos = path.rfind('/');
+    if(pos == std::string::npos)
+        return path;
+    return path.substr(pos+1);
+}
+
 std::string currentDateTime(std::string format) {
     time_t     now = time(0);
     struct tm  tstruct;
@@ -800,7 +826,58 @@ std::string getModifiedDate(std::string filename) {
         stat(filename.c_str(), &attrib);
         timeStr = ctime(&(attrib.st_mtime));
     #endif
+    trim(timeStr);
     return timeStr;
+}
+
+void extractZipFile(std::string zipFilepath, std::string destination) {
+	int result = zip_extract(zipFilepath.c_str(), destination.c_str(), nullptr, nullptr);
+    if(result != 0)
+        throw Exception("Zip extraction failed");
+}
+
+std::string stringToLower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), 
+                   [](unsigned char c){ return std::tolower(c); }
+	);
+    return s;
+}
+std::string stringToUpper(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), 
+                   [](unsigned char c){ return std::toupper(c); }
+	);
+    return s;
+}
+
+uint64_t fileSize(std::string filename) {
+#ifdef WIN32
+    struct __stat64 stat_buf;
+    int rc = _stat64(filename.c_str(), &stat_buf);
+#else
+    struct stat stat_buf;
+    int rc = stat(filename.c_str(), &stat_buf);
+#endif
+    if(rc != 0)
+        throw Exception("Unable to get file size of " + filename);
+    return stat_buf.st_size;
+}
+
+std::string generateRandomString(int length) {
+    static auto& chrs = "0123456789"
+                        "abcdefghijklmnopqrstuvwxyz"
+                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    thread_local static std::mt19937 rg{std::random_device{}()};
+    thread_local static std::uniform_int_distribution<std::string::size_type> pick(0, sizeof(chrs) - 2);
+
+    std::string s;
+
+    s.reserve(length);
+
+    while(length--)
+        s += chrs[pick(rg)];
+
+    return s;
 }
 
 } // end namespace fast

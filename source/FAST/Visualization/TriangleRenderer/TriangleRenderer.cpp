@@ -15,14 +15,13 @@ uint TriangleRenderer::addInputConnection(DataChannel::pointer port, Color color
     return nr;
 }
 
-
-TriangleRenderer::TriangleRenderer() : Renderer() {
-    mDefaultOpacity = 1;
-    mDefaultColor = Color::Green();
-    mDefaultSpecularReflection = 0.8f;
+TriangleRenderer::TriangleRenderer(Color color, float opacity, bool wireframe, float specularReflection) : Renderer() {
+    mDefaultOpacity = opacity;
+    mDefaultColor = color;
+    mDefaultSpecularReflection = specularReflection;
     createInputPort<Mesh>(0, false);
     mLineSize = 1;
-    mWireframe = false;
+    mWireframe = wireframe;
     mDefaultColorSet = false;
     createShaderProgram({
         Config::getKernelSourcePath() + "Visualization/TriangleRenderer/TriangleRenderer.vert",
@@ -42,9 +41,9 @@ void TriangleRenderer::setLineSize(int size) {
 
 }
 
-void TriangleRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) {
-    std::lock_guard<std::mutex> lock(mMutex);
-
+void TriangleRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D,
+                            int viewWidth,
+                            int viewHeight) {
     if(mWireframe)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
@@ -53,7 +52,8 @@ void TriangleRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, 
     setShaderUniform("viewTransform", viewingMatrix);
     setShaderUniform("mode2D", mode2D);
     setShaderUniform("ignoreInvertedNormals", mIgnoreInvertedNormals);
-    for(auto it : mDataToRender) {
+    auto dataToRender = getDataToRender();
+    for(auto it : dataToRender) {
         Mesh::pointer surfaceToRender = std::static_pointer_cast<Mesh>(it.second);
 
         // Delete old VAO
@@ -65,15 +65,12 @@ void TriangleRenderer::draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, 
         mVAO[it.first] = VAO_ID;
         glBindVertexArray(VAO_ID);
 
-        AffineTransformation::pointer transform;
-        if(mode2D) {
-            // If rendering is in 2D mode we skip any transformations
-            transform = AffineTransformation::New();
-        } else {
-            transform = SceneGraph::getAffineTransformationFromData(surfaceToRender);
+        Affine3f transform = Affine3f::Identity();
+        // If rendering is in 2D mode we skip any transformations
+        if(!mode2D) {
+            transform = SceneGraph::getEigenTransformFromData(surfaceToRender);
         }
-
-        setShaderUniform("transform", transform->getTransform());
+        setShaderUniform("transform", transform);
 
         float opacity = mDefaultOpacity;
         if(mInputOpacities.count(it.first) > 0) {

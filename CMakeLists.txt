@@ -1,11 +1,15 @@
-﻿cmake_minimum_required(VERSION 3.5)
-
+﻿cmake_minimum_required(VERSION 3.11)
+if(APPLE)
+	message(STATUS "APPLE DETECTED. Set CMAKE_OSX_ARCHITECTURES to arm64 to build for Apple Silicon")
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum OS X deployment version")
+endif()
 project(FAST)
 
-set(VERSION_MAJOR 3)
-set(VERSION_MINOR 0)
+set(VERSION_MAJOR 4)
+set(VERSION_MINOR 6)
 set(VERSION_PATCH 0)
-set(VERSION_SO 0)   # SO version, should be incremented by 1 every time the existing API changes
+set(VERSION_SO 4)   # SO version, should be incremented by 1 every time the existing API changes
+set(FAST_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
 
 # set policies explicitly to avoid warnings.
 # Read more on CMP0022 here: https://cmake.org/cmake/help/v3.0/policy/CMP0022.html
@@ -20,27 +24,54 @@ option(FAST_BUILD_TESTS "Build FAST tests." ON)
 option(FAST_BUILD_EXAMPLES "Build examples." OFF)
 option(FAST_BUILD_TOOLS "Build tools." ON)
 option(FAST_BUILD_DOCS "Build API documentation" OFF)
-option(FAST_DOWNLOAD_TEST_DATA "Download test data automatically (> 1 GB)" OFF)
 option(FAST_MODULE_VTK "Enable interoperability with VTK" OFF)
 option(FAST_MODULE_ITK "Enable interoperability with ITK" OFF)
 option(FAST_MODULE_Visualization "Enable visualization capabilities using Qt5. Without this module, all visualization in FAST will be disabled." ON)
 option(FAST_MODULE_OpenIGTLink "Build module OpenIGTLink" ON)
-option(FAST_MODULE_TensorFlow "Build TensorFlow inference engine" OFF)
-option(FAST_MODULE_TensorRT "Build NVIDIA TensorRT inference engine" OFF)
-option(FAST_MODULE_OpenVINO "Build Intel OpenVINO inference engine" OFF)
+if(WIN32 OR APPLE)
+    option(FAST_MODULE_ONNXRuntime "Build Microsoft ONNX runtime inference engine" ON)
+else()
+    set(FAST_MODULE_ONNXRuntime OFF)
+endif()
 option(FAST_MODULE_Python "Build Python wrappers" OFF)
 option(FAST_MODULE_Kinect "Build kinect module" OFF)
-option(FAST_MODULE_RealSense "Build real sense module" ON)
+if(CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+	set(FAST_MODULE_OpenVINO OFF)
+	set(FAST_MODULE_TensorFlow OFF)
+	set(FAST_MODULE_TensorRT OFF)
+	set(FAST_MODULE_RealSense OFF)
+	set(FAST_MODULE_Clarius OFF)
+else()
+	option(FAST_MODULE_TensorFlow "Build TensorFlow inference engine" OFF)
+	option(FAST_MODULE_TensorRT "Build NVIDIA TensorRT inference engine" OFF)
+	option(FAST_MODULE_OpenVINO "Build Intel OpenVINO inference engine" ON)
+	option(FAST_MODULE_RealSense "Build real sense module" ON)
+	option(FAST_MODULE_Clarius "Build clarius ultrasound module" ON)
+endif()
 option(FAST_MODULE_WholeSlideImaging "Build whole slide imaging module" ON)
-option(FAST_MODULE_Clarius "Build clarius ultrasound module" ON)
 option(FAST_MODULE_Dicom "Build DICOM module (DCMTK)" ON)
 option(FAST_MODULE_HDF5 "Build HDF5 module" OFF)
 option(FAST_MODULE_Plotting "Build plotting module (JKQTPlotter)" OFF)
 option(FAST_CONTINUOUS_INTEGRATION "Used for continuous integration tests" OFF)
 option(FAST_BUILD_QT5 "Download and build Qt 5. Turn this OFF if you want to use pre-built binaries you already have on your machine." ON)
+option(FAST_BUILD_ALL_DEPENDENCIES "Download and build all dependencies" OFF)
+option(FAST_SIGN_CODE "Whether to sign binaries" OFF)
+set(FAST_Python_Version "" CACHE STRING "Python version to use for building pyFAST")
 
-# Python version
-set(FAST_Python_Version "" CACHE STRING "Specify which Python version to build python wrappers with. E.g. 2 or 3")
+# Base URL for downloading prebuilt dependencies
+set(FAST_PREBUILT_DEPENDENCY_DOWNLOAD_URL "http://fast.eriksmistad.no/download/third_party_libraries/")
+set(FAST_PREBUILT_DEPENDENCY_DOWNLOAD_URL_NEW "https://github.com/smistad/FAST-dependencies/releases/download/v${VERSION_MAJOR}.0.0/")
+if(WIN32)
+    set(FAST_DEPENDENCY_TOOLSET msvc142)
+elseif(APPLE)
+if(CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set(FAST_DEPENDENCY_TOOLSET mac${CMAKE_OSX_DEPLOYMENT_TARGET}_arm64)
+else()
+    set(FAST_DEPENDENCY_TOOLSET mac${CMAKE_OSX_DEPLOYMENT_TARGET})
+endif()
+else()
+    set(FAST_DEPENDENCY_TOOLSET glibc2.27)
+endif()
 
 #### Set build type
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -72,8 +103,6 @@ foreach( OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES} )
 endforeach( OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES )
 
 #### Paths
-set(FAST_TEST_DATA_DIR "" CACHE PATH "Directory of test data. Default is ROOT/data/.")
-set(FAST_OPENCL_KERNEL_BINARY_PATH "" CACHE PATH "Directory to put kernel binaries in. Default is build dir.")
 set(FAST_SOURCE_DIR "${PROJECT_SOURCE_DIR}/source/FAST/")
 
 #### Module path
@@ -88,22 +117,25 @@ endif()
 # Set FAST include dirs
 set(FAST_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/source/ ${CMAKE_CURRENT_BINARY_DIR})
 
-# Some extra build settings (C++14 and OpenMP)
+# Some extra build settings
 set(CMAKE_CXX_STANDARD 17)
 if(CMAKE_COMPILER_IS_GNUCXX)
     #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations") # Remove deprecated warnings GCC
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-ignored-attributes") # Remove ignored attritubes on template argument warnings from cl.hpp
 endif()
+# GCC doesn't hide symbols by default, while MSVC does. Let's be consistent and always hide:
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 # This will setup all of FAST's dependencies
 include(cmake/Depdendencies.cmake)
 
-# This will download the test data
-include(cmake/DownloadTestData.cmake)
-
 if(FAST_BUILD_DOCS)
+    include(cmake/ExternalMCSS.cmake)
     include(cmake/Documentation.cmake)
 endif()
+
+include(cmake/OpenMP.cmake)
 
 #### Set include dirs
 include_directories(${FAST_INCLUDE_DIRS})
@@ -124,6 +156,8 @@ if(WIN32)
 	# Parallel build in MSVC
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj /nologo /MD /EHsc")
+  # Removes issues with Eigen complaining that M_LOG2E does not exist
+  add_definitions(-D_USE_MATH_DEFINES)
 endif()
 
 #### Add all subdirs
@@ -144,7 +178,11 @@ if(FAST_BUILD_EXAMPLES)
     endif()
 endif()
 
-
+configure_file(
+    ${PROJECT_SOURCE_DIR}/source/FASTVersion.hpp.in
+    ${PROJECT_BINARY_DIR}/FASTVersion.hpp
+    @ONLY
+)
 
 #### Create FAST library and executables
 add_library(FAST SHARED ${FAST_SOURCE_FILES})
@@ -152,7 +190,6 @@ add_dependencies(FAST ${FAST_EXTERNAL_DEPENDENCIES})
 include(GenerateExportHeader)
 generate_export_header(FAST EXPORT_FILE_NAME FASTExport.hpp)
 
-include(cmake/OpenMP.cmake)
 
 ## Link everything
 message("-- FAST LIBS: ${LIBRARIES} ${FAST_SYSTEM_LIBRARIES}")
@@ -185,21 +222,6 @@ set(CONFIG_TEST_DATA_PATH "TestDataPath = ${CMAKE_CURRENT_SOURCE_DIR}/data/")
 set(CONFIG_DOCUMENTATION_PATH "DocumentationPath = ${CMAKE_CURRENT_SOURCE_DIR}/doc/")
 set(CONFIG_KERNEL_SOURCE_PATH "KernelSourcePath = ${CMAKE_CURRENT_SOURCE_DIR}/source/FAST/")
 set(CONFIG_PIPELINE_PATH "PipelinePath = ${CMAKE_CURRENT_SOURCE_DIR}/pipelines/")
-
-# If test data dir has been set by user, use that instead
-if(NOT FAST_TEST_DATA_DIR STREQUAL "")
-    # Remove any existing "
-    string(REPLACE "\"" "" FAST_TEST_DATA_DIR ${FAST_TEST_DATA_DIR})
-    message("-- FAST test data directory set to: \"${FAST_TEST_DATA_DIR}\"")
-    set(CONFIG_TEST_DATA_PATH "TestDataPath = ${FAST_TEST_DATA_DIR}/")
-endif()
-# If OpenCL kernel binary path has been set by user, write it to the config
-if(NOT FAST_OPENCL_KERNEL_BINARY_PATH STREQUAL "")
-    # Remove any existing "
-    string(REPLACE "\"" "" FAST_OPENCL_KERNEL_BINARY_PATH ${FAST_OPENCL_KERNEL_BINARY_PATH})
-    message("-- OpenCL Kernel binary path set to: ${FAST_OPENCL_KERNEL_BINARY_PATH}")
-    set(CONFIG_KERNEL_BINARY_PATH "KernelBinaryPath = ${FAST_OPENCL_KERNEL_BINARY_PATH}/")
-endif()
 
 # configure the configuration file.
 configure_file(

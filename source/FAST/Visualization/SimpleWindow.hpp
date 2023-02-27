@@ -1,30 +1,81 @@
-#ifndef SIMPLEWINDOW_HPP_
-#define SIMPLEWINDOW_HPP_
+#pragma once
 
-#include "Window.hpp"
-#include "View.hpp"
-#include "Renderer.hpp"
+#include <FAST/Visualization/Window.hpp>
+#include <FAST/Visualization/View.hpp>
+#include <FAST/Visualization/Renderer.hpp>
 
 namespace fast {
 
-class FAST_EXPORT  SimpleWindow : public Window {
+/**
+ * @brief A Window with only 1 View
+ */
+class FAST_EXPORT SimpleWindow : public Window {
     FAST_OBJECT(SimpleWindow)
     public:
-        void addRenderer(SharedPointer<Renderer> renderer);
+        /**
+         * Create a SimpleWindow object
+         *
+         * Args:
+         * @param mode2D 2D or 3D mode
+         * @param bgcolor Background color
+         * @param width in pixels
+         * @param height in pixels
+         * @return shared ptr of new SimpleWindow
+         */
+        FAST_CONSTRUCTOR(SimpleWindow,
+                         bool, mode2D, = false,
+                         Color, bgcolor, = Color::White(),
+                         uint, width, = 0,
+                         uint, height, = 0);
+        void addRenderer(std::shared_ptr<Renderer> renderer);
+        void addWidget(QWidget* widget);
         void removeAllRenderers();
         void setMaximumFramerate(unsigned int framerate);
-        View* getView() const;
+        View* getView();
         ~SimpleWindow();
-        void set2DMode();
-        void set3DMode();
-        SimpleWindow();
+        std::shared_ptr<SimpleWindow> connect(std::shared_ptr<Renderer> renderer);
+        std::shared_ptr<SimpleWindow> connect(std::vector<std::shared_ptr<Renderer>> renderers);
+        std::shared_ptr<SimpleWindow> connect(QWidget* widget);
     protected:
+        void init();
+        QVBoxLayout* m_widgetLayout;
 
 };
 
+/**
+ * @brief A Window with only 1 View in 2D mode
+ */
+class FAST_EXPORT SimpleWindow2D : public SimpleWindow {
+    FAST_OBJECT_V4(SimpleWindow2D)
+    public:
+        /**
+         * Create a SimpleWindow 2D object
+         *
+         * Args:
+         * @param bgcolor Background color
+         * @param width in pixels
+         * @param height in pixels
+         * @return shared ptr of new SimpleWindow
+         */
+        FAST_CONSTRUCTOR(SimpleWindow2D, Color, bgcolor, = Color::White(), uint, width, = 0, uint, height, = 0)
+};
+
+/**
+ * @brief A Window with only 1 View in 3D mode
+ */
+class FAST_EXPORT SimpleWindow3D : public SimpleWindow {
+    FAST_OBJECT_V4(SimpleWindow3D)
+    public:
+        /**
+         * Create a SimpleWindow 3D object
+         *
+         * Args:
+         * @param bgcolor Background color
+         * @param width in pixels
+         * @param height in pixels
+         * @return shared ptr of new SimpleWindow
+         */
+        FAST_CONSTRUCTOR(SimpleWindow3D, Color, bgcolor, = Color::White(), uint, width, = 0, uint, height, = 0)
+};
 } // end namespace fast
 
-
-
-
-#endif /* SIMPLEWINDOW_HPP_ */

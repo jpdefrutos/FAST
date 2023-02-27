@@ -2,16 +2,19 @@
 
 # Install FAST library
 if(WIN32)
-# DLL should be in binary folder
-install(TARGETS FAST
-	DESTINATION fast/bin
-	COMPONENT fast
-)
+		# DLL should be in binary folder
+		install(TARGETS FAST
+			DESTINATION fast/bin
+			COMPONENT fast
+		)
+		set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION fast/bin)
+		set(CMAKE_INSTALL_OPENMP_LIBRARIES ON)
+		include(InstallRequiredSystemLibraries) # Install vcruntime dlls
 else()
-install(TARGETS FAST
-	DESTINATION fast/lib
-	COMPONENT fast
-)
+		install(TARGETS FAST
+			DESTINATION fast/lib
+			COMPONENT fast
+		)
 endif()
 
 if(FAST_BUILD_TESTS)
@@ -29,37 +32,61 @@ install(FILES ${PROJECT_BINARY_DIR}/FASTExport.hpp
     DESTINATION fast/include
 	COMPONENT fast
 )
+install(FILES ${PROJECT_BINARY_DIR}/FASTVersion.hpp
+	DESTINATION fast/include
+	COMPONENT fast
+)
 if(WIN32)
-	file(GLOB DLLs ${PROJECT_BINARY_DIR}/bin/*.dll)
-	install(FILES ${DLLs}
-		DESTINATION fast/bin
-		COMPONENT fast
-	)
-	file(GLOB DLLs ${PROJECT_BINARY_DIR}/lib/*.lib)
-	install(FILES ${DLLs}
-		DESTINATION fast/lib
-		COMPONENT fast
-	)
+	install(DIRECTORY ${PROJECT_BINARY_DIR}/bin/
+			DESTINATION fast/bin/
+			COMPONENT fast
+			FILES_MATCHING PATTERN "*.dll")
+	install(DIRECTORY ${PROJECT_BINARY_DIR}/lib/
+			DESTINATION fast/lib/
+			COMPONENT fast
+			FILES_MATCHING PATTERN "*.lib")
 elseif(APPLE)
-	file(GLOB SOs ${PROJECT_BINARY_DIR}/lib/*.dylib)
-	install(FILES ${SOs}
-        DESTINATION fast/lib
-		COMPONENT fast
-    )
+	install(DIRECTORY ${PROJECT_BINARY_DIR}/lib/
+			DESTINATION fast/lib/
+			COMPONENT fast
+			FILES_MATCHING PATTERN "*.dylib*")
+	install(DIRECTORY ${PROJECT_BINARY_DIR}/lib/
+			DESTINATION fast/lib/
+			COMPONENT fast
+			FILES_MATCHING PATTERN "*.so*")
+	install(SCRIPT cmake/FixRPaths.cmake COMPONENT fast)
+	if(FAST_SIGN_CODE)
+		install(CODE "
+    file(GLOB installedSOs
+            \"$ENV\{DESTDIR\}/$\{CMAKE_INSTALL_PREFIX\}/fast/lib/*.dylib*\"
+            \"$ENV\{DESTDIR\}/$\{CMAKE_INSTALL_PREFIX\}/fast/lib/*.so*\"
+            \"$ENV\{DESTDIR\}/$\{CMAKE_INSTALL_PREFIX\}/fast/bin/*\"
+	)
+
+    foreach(SO $\{installedSOs\})
+    	message(\"-- Signing $\{SO\}\")
+		execute_process(COMMAND codesign --force --options runtime,library -s \"Developer ID Application: Erik Smistad (85JK2HDMY2)\" --timestamp --signature-size=12000 $\{SO\} RESULT_VARIABLE res OUTPUT_VARIABLE out ERROR_VARIABLE err)
+		if (NOT res EQUAL 0)
+			message(\"Unable to sign $\{SO\} - $\{err\}\")
+		endif ()
+	endforeach()
+    message(\"Binaries signed\")
+		" COMPONENT fast)
+	endif()
 else()
-	file(GLOB SOs ${PROJECT_BINARY_DIR}/lib/*.so*)
-	install(FILES ${SOs}
-        DESTINATION fast/lib
-		COMPONENT fast
-    )
+	install(DIRECTORY ${PROJECT_BINARY_DIR}/lib/
+			DESTINATION fast/lib/
+			COMPONENT fast
+			FILES_MATCHING PATTERN "*.so*")
 	# Fix RPaths on install
-    install(SCRIPT cmake/FixRPaths.cmake)
+    install(SCRIPT cmake/FixRPaths.cmake COMPONENT fast)
 endif()
 
 # Install Qt plugins
+if(FAST_MODULE_Visualization)
 install(DIRECTORY ${PROJECT_BINARY_DIR}/plugins/
     DESTINATION fast/plugins/
-	COMPONENT fast
+		COMPONENT fast
 )
 
 # Install qt moc
@@ -75,6 +102,7 @@ if(WIN32)
 		    DESTINATION fast/bin
 		)
 endif()
+endif()
 
 # Install headers
 install(DIRECTORY ${FAST_SOURCE_DIR}
@@ -87,20 +115,11 @@ install(DIRECTORY ${FAST_SOURCE_DIR}
 	COMPONENT fast
 	FILES_MATCHING PATTERN "*.h"
 )
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/source/CL/
-	DESTINATION fast/include/CL/
-	COMPONENT fast
-	FILES_MATCHING PATTERN "*.h"
-)
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/source/CL/
-	DESTINATION fast/include/CL/
-	COMPONENT fast
-	FILES_MATCHING PATTERN "*.hpp"
-)
 
 # External include files needed
 set(INCLUDE_FOLDERS
     eigen3
+	  CL
     QtAccessibilitySupport
     QtConcurrent
     QtCore
@@ -120,46 +139,47 @@ set(INCLUDE_FOLDERS
     QtPrintSupport
     QtSerialPort
     QtSql
-		QtSvg
+    QtSvg
     QtTest
     QtThemeSupport
     QtWidgets
     QtXml
     QtZlib)
 if(FAST_MODULE_Plotting)
-	list(APPEND INCLUDE_FOLDERS jkqtplotter jkqtcommon jkqtfastplotter jkqtmathtext)
+    list(APPEND INCLUDE_FOLDERS jkqtplotter jkqtcommon jkqtfastplotter jkqtmathtext)
 endif()
 if(WIN32)
-list(APPEND INCLUDE_FOLDERS
-    ActiveQt
-)
+    list(APPEND INCLUDE_FOLDERS
+        ActiveQt
+    )
+elseif(APPLE)
 else()
-list(APPEND INCLUDE_FOLDERS
-    QtGlxSupport
-		QtServiceSupport
-		QtInputSupport
-		QtKmsSupport
-)
+    list(APPEND INCLUDE_FOLDERS
+        QtGlxSupport
+        QtServiceSupport
+        QtInputSupport
+    )
 endif()
 foreach(INCLUDE_FOLDER ${INCLUDE_FOLDERS})
     install(DIRECTORY ${PROJECT_BINARY_DIR}/include/${INCLUDE_FOLDER}/
         DESTINATION fast/include/${INCLUDE_FOLDER}/
+				OPTIONAL
 		COMPONENT fast
         FILES_MATCHING PATTERN "*.h"
     )
     install(DIRECTORY ${PROJECT_BINARY_DIR}/include/${INCLUDE_FOLDER}/
         DESTINATION fast/include/${INCLUDE_FOLDER}/
+				OPTIONAL
 		COMPONENT fast
         FILES_MATCHING PATTERN "*.hpp"
     )
     install(DIRECTORY ${PROJECT_BINARY_DIR}/include/${INCLUDE_FOLDER}/
         DESTINATION fast/include/${INCLUDE_FOLDER}/
+				OPTIONAL
 		COMPONENT fast
         FILES_MATCHING REGEX "/[^.]+$" # Files with no extension
     )
 endforeach()
-
-
 
 # Install created headers
 install(FILES ${PROJECT_BINARY_DIR}/ProcessObjectList.hpp
@@ -180,12 +200,15 @@ install(DIRECTORY ${FAST_SOURCE_DIR}
 	COMPONENT fast
 	FILES_MATCHING PATTERN "*.vert"
 )
-
-# Install GL shaders
 install(DIRECTORY ${FAST_SOURCE_DIR}
 	DESTINATION fast/kernels/
 	COMPONENT fast
 	FILES_MATCHING PATTERN "*.frag"
+)
+install(DIRECTORY ${FAST_SOURCE_DIR}
+	DESTINATION fast/kernels/
+	COMPONENT fast
+	FILES_MATCHING PATTERN "*.geom"
 )
 
 # Install CMake files
@@ -198,10 +221,22 @@ install(FILES ${PROJECT_SOURCE_DIR}/cmake/FindOpenCL.cmake
 	COMPONENT fast
 )
 
-# Install docs
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/doc/
-    DESTINATION fast/doc/
+# Install fonts and icons/logo
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/doc/fonts/
+    DESTINATION fast/doc/fonts/
 	COMPONENT fast
+)
+install(FILES
+			${PROJECT_SOURCE_DIR}/doc/images/fast_icon.ico
+			${PROJECT_SOURCE_DIR}/doc/images/fast_icon.png
+			${PROJECT_SOURCE_DIR}/doc/images/FAST_logo_square.png
+		DESTINATION fast/doc/images/
+		COMPONENT fast
+)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/doc/
+		DESTINATION fast/doc/
+		COMPONENT fast
+		FILES_MATCHING PATTERN "*.ini"
 )
 
 # Install pipelines
@@ -209,19 +244,6 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/pipelines/
     DESTINATION fast/pipelines/
 	COMPONENT fast
 )
-
-# Install Python wrapper
-if(FAST_MODULE_Python)
-install(TARGETS _fast
-    DESTINATION fast/python/fast
-)
-install(FILES ${PROJECT_BINARY_DIR}/lib/fast/fast.py
-    DESTINATION fast/python/fast
-)
-install(FILES ${PROJECT_BINARY_DIR}/lib/fast/__init__.py
-		DESTINATION fast/python/fast
-		)
-endif()
 
 # Copy configuration file
 # Create new configuration file for install
@@ -259,43 +281,28 @@ install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/README_default.md
     RENAME README.md
 	COMPONENT fast
 )
+if(WIN32)
+	install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/MSVC_redis_files_license.txt
+	    DESTINATION fast/licenses/MSVC/
+			COMPONENT fast
+	)
+endif()
 
 # Install license files for depedencies
-# Qt5
-file(GLOB LICENSE_FILES ${FAST_EXTERNAL_BUILD_DIR}/qt5/src/qt5/LICENSE.*)
-install(FILES ${LICENSE_FILES}
-		DESTINATION fast/licenses/qt5/
-		COMPONENT fast
-)
-
 # Eigen
-file(GLOB LICENSE_FILES ${FAST_EXTERNAL_BUILD_DIR}/eigen/src/eigen/COPYING.*)
-install(FILES ${LICENSE_FILES}
+install(DIRECTORY ${FAST_EXTERNAL_BUILD_DIR}/eigen/src/eigen/
 		DESTINATION fast/licenses/eigen/
 		COMPONENT fast
-)
-# zlib
-install(FILES ${FAST_EXTERNAL_BUILD_DIR}/zlib/src/zlib/README
-		DESTINATION fast/licenses/zlib/
-		COMPONENT fast
-)
-# OpenIGTLink
-if(FAST_MODULE_OpenIGTLink)
-install(FILES ${FAST_EXTERNAL_BUILD_DIR}/OpenIGTLink/src/OpenIGTLink/LICENSE.txt
-		DESTINATION fast/licenses/OpenIGTLink/
-		COMPONENT fast
-)
-endif()
-# DCMTK
-if(FAST_MODULE_Dicom)
-install(FILES ${FAST_EXTERNAL_BUILD_DIR}/dcmtk/src/dcmtk/COPYRIGHT
-		DESTINATION fast/licenses/dcmtk/
-		COMPONENT fast
-)
-endif()
+		FILES_MATCHING PATTERN "COPYING.*")
+
 # NumPy (numpy.i file)
 install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/NumPy_LICENSE.txt
 		DESTINATION fast/licenses/numpy/
+		COMPONENT fast
+)
+# Eigen SWIG interface (eigen.i file)
+install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/Eigen_SWIG_interface_LICENSE.txt
+		DESTINATION fast/licenses/eigen-swig/
 		COMPONENT fast
 )
 # Semaphore implementation
@@ -303,76 +310,36 @@ install(FILES ${PROJECT_SOURCE_DIR}/cmake/InstallFiles/Semaphore_LICENSE.txt
 		DESTINATION fast/licenses/semaphore/
 		COMPONENT fast
 )
-
-# Tensorflow license
-if(FAST_MODULE_TensorFlow)
-	install(FILES ${FAST_EXTERNAL_BUILD_DIR}/tensorflow/src/tensorflow_download/LICENSE
-        DESTINATION fast/licenses/tensorflow/
-		COMPONENT fast
-    )
-endif()
+# Install licenses
+install(DIRECTORY ${PROJECT_BINARY_DIR}/licenses/
+	OPTIONAL
+	DESTINATION fast/licenses
+	COMPONENT fast
+)
+install(DIRECTORY ${PROJECT_BINARY_DIR}/licences/
+	OPTIONAL
+	DESTINATION fast/licenses
+	COMPONENT fast
+)
 if(FAST_MODULE_OpenVINO)
-	install(FILES ${FAST_EXTERNAL_BUILD_DIR}/OpenVINO/src/OpenVINO/LICENSE
-		DESTINATION fast/licenses/openvino/
-		COMPONENT fast
-	)
 	if(WIN32)
-		install(FILES ${PROJECT_BINARY_DIR}/bin/plugins.xml
+		install(FILES ${PROJECT_BINARY_DIR}/bin/plugins.xml ${PROJECT_BINARY_DIR}/bin/cache.json
 		  DESTINATION fast/bin/
 			COMPONENT fast
 	  )
 	else()
-		install(FILES ${PROJECT_BINARY_DIR}/lib/plugins.xml
+		install(FILES ${PROJECT_BINARY_DIR}/lib/plugins.xml ${PROJECT_BINARY_DIR}/lib/cache.json
 			DESTINATION fast/lib/
 			COMPONENT fast
+			OPTIONAL
 		)
 	endif()
 endif()
 
-if(FAST_MODULE_RealSense)
+if(FAST_MODULE_Clarius)
 	install(FILES
-        ${FAST_EXTERNAL_BUILD_DIR}/realsense/src/realsense/LICENSE
-        ${FAST_EXTERNAL_BUILD_DIR}/realsense/src/realsense/NOTICE
-        DESTINATION fast/licenses/realsense/
-		COMPONENT fast
-    )
-endif()
-
-if(FAST_MODULE_WholeSlideImaging AND WIN32)
-    # Install openslide and related licences
-    install(DIRECTORY
-        ${FAST_EXTERNAL_BUILD_DIR}/openslide/src/openslide/licenses/
-        DESTINATION fast/licenses/
-		COMPONENT fast
-    )
-endif()
-
-if(FAST_MODULE_HDF5)
-	install(FILES
-		${FAST_EXTERNAL_BUILD_DIR}/hdf5/src/hdf5/COPYING
-		DESTINATION fast/licenses/hdf5/
+		${FAST_EXTERNAL_BUILD_DIR}/clarius/src/clarius_headers/LICENSE
+		DESTINATION fast/licenses/clarius/
 		COMPONENT fast
 	)
 endif()
-
-if(FAST_MODULE_Plotting)
-		install(FILES
-				${FAST_EXTERNAL_BUILD_DIR}/jkqtplotter/src/jkqtplotter/LICENSE
-				DESTINATION fast/licenses/jkqtplotter/
-				COMPONENT fast
-		)
-endif()
-
-if(FAST_BUILD_DOCS)
-	install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/html
-        DESTINATION fast/doc
-		COMPONENT fast
-    )
-endif()
-
-# Create empty kernel_binaries folder for caching
-install(DIRECTORY
-	DESTINATION fast/kernel_binaries
-	DIRECTORY_PERMISSIONS OWNER_READ OWNER_EXECUTE OWNER_WRITE GROUP_READ GROUP_EXECUTE GROUP_WRITE WORLD_READ WORLD_WRITE WORLD_EXECUTE
-	COMPONENT fast
-)

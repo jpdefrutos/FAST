@@ -2,15 +2,20 @@
 
 #include "FAST/ProcessObject.hpp"
 
-#include <FAST/Streamers/Streamer.hpp>
+#include <FAST/Streamers/RandomAccessStreamer.hpp>
 #include <thread>
 
 namespace fast {
 
 /**
- * Abstract FileStreamer class
+ * @brief Abstract file streamer class
+ *
+ * <h3>Output ports</h3>
+ * - 0: Image
+ *
+ * @ingroup streamers
  */
-class FAST_EXPORT FileStreamer : public Streamer {
+class FAST_EXPORT FileStreamer : public RandomAccessStreamer {
     public:
         void setFilenameFormat(std::string str);
         void setFilenameFormats(std::vector<std::string> strings);
@@ -47,7 +52,6 @@ class FAST_EXPORT FileStreamer : public Streamer {
         FileStreamer();
         void execute();
 
-        bool mLoop;
         int mNrOfReplays;
         uint mZeroFillDigits;
         int mStartNumber;

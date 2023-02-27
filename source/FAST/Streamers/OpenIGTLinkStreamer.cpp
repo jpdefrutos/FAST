@@ -1,6 +1,6 @@
 #include "OpenIGTLinkStreamer.hpp"
 #include "FAST/Data/Image.hpp"
-#include "FAST/AffineTransformation.hpp"
+#include "FAST/Data/SimpleDataObject.hpp"
 #include <igtl/igtlOSUtil.h>
 #include <igtl/igtlMessageHeader.h>
 #include <igtl/igtlTransformMessage.h>
@@ -10,14 +10,15 @@
 #include <igtl/igtlStringMessage.h>
 #include <igtl/igtlClientSocket.h>
 #include <chrono>
+#include <string>
 
 namespace fast {
 
-	class IGTLSocketWrapper {
-	public:
-		IGTLSocketWrapper(igtl::ClientSocket::Pointer socket) : socket(socket) {};
-		igtl::ClientSocket::Pointer socket;
-	};
+class IGTLSocketWrapper {
+public:
+    IGTLSocketWrapper(igtl::ClientSocket::Pointer socket) : socket(socket) {};
+    igtl::ClientSocket::Pointer socket;
+};
 
 void OpenIGTLinkStreamer::setConnectionAddress(std::string address) {
     mAddress = address;
@@ -30,16 +31,19 @@ void OpenIGTLinkStreamer::setConnectionPort(uint port) {
 }
 
 DataChannel::pointer OpenIGTLinkStreamer::getOutputPort(uint portID) {
-	if (mOutputPortDeviceNames.count("") == 0) {
-		portID = getNrOfOutputPorts();
-		createOutputPort<Image>(portID);
-		getOutputData<Image>(portID); // This initializes the output data
-		mOutputPortDeviceNames[""] = portID;
-	}
-	else {
-		portID = mOutputPortDeviceNames[""];
-	}
-	return ProcessObject::getOutputPort(portID);
+    if(getNrOfOutputPorts() == 0) {
+        portID = getOutputPortNumber("");
+    }
+	return Streamer::getOutputPort(portID);
+}
+
+uint OpenIGTLinkStreamer::getOutputPortNumber(std::string deviceName) {
+    if(mOutputPortDeviceNames.count(deviceName) == 0) {
+        uint portID = getNrOfOutputPorts();
+        createOutputPort(portID);
+        mOutputPortDeviceNames[deviceName] = portID;
+    }
+    return mOutputPortDeviceNames[deviceName];
 }
 
 uint OpenIGTLinkStreamer::getNrOfFrames() const {
@@ -77,7 +81,6 @@ std::vector<std::string> OpenIGTLinkStreamer::getActiveTransformStreamNames() {
 }
 
 static Image::pointer createFASTImageFromMessage(igtl::ImageMessage::Pointer message, ExecutionDevice::pointer device) {
-    Image::pointer image = Image::New();
     int width, height, depth;
     message->GetDimensions(width, height, depth);
     void* data = message->GetScalarPointer();
@@ -103,10 +106,11 @@ static Image::pointer createFASTImageFromMessage(igtl::ImageMessage::Pointer mes
             break;
     }
 
+    Image::pointer image;
     if(depth == 1) {
-        image->create(width, height, type, message->GetNumComponents(), device, data);
+        image = Image::create(width, height, type, message->GetNumComponents(), device, data);
     } else {
-        image->create(width, height, depth, type, message->GetNumComponents(), device, data);
+        image = Image::create(width, height, depth, type, message->GetNumComponents(), device, data);
     }
 
     auto spacing = std::make_unique<float[]>(3);
@@ -116,15 +120,15 @@ static Image::pointer createFASTImageFromMessage(igtl::ImageMessage::Pointer mes
     igtl::Matrix4x4 matrix;
     message->GetMatrix(matrix);
     image->setSpacing(Vector3f(spacing[0], spacing[1], spacing[2]));
-    AffineTransformation::pointer T = AffineTransformation::New();
-    T->getTransform().translation() = Vector3f(offset[0], offset[1], offset[2]);
+    auto T = Affine3f::Identity();
+    T.translation() = Vector3f(offset[0], offset[1], offset[2]);
     Matrix3f fastMatrix;
     for(int i = 0; i < 3; i++) {
     for(int j = 0; j < 3; j++) {
         fastMatrix(i,j) = matrix[i][j];
     }}
-    T->getTransform().linear() = fastMatrix;
-    image->getSceneGraphNode()->setTransformation(T);
+    T.linear() = fastMatrix;
+    image->getSceneGraphNode()->setTransform(T);
 
 
     return image;
@@ -176,8 +180,9 @@ void OpenIGTLinkStreamer::generateStream() {
         headerMsg->InitPack();
 
         // Receive generic header from the socket
-        int r = mSocketWrapper->socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
-        if(r == 0) {
+        bool timeout = false;
+        int r = mSocketWrapper->socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize(), timeout);
+        if(r == 0 || timeout) {
             //connectionLostSignal();
             mSocketWrapper->socket->CloseSocket();
             break;
@@ -206,11 +211,7 @@ void OpenIGTLinkStreamer::generateStream() {
             }
         }
 
-        //unsigned long timestamp = round(ts->GetTimeStamp()*1000); // convert to milliseconds
-        auto now = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> duration = now - start;
-        uint64_t timestamp = duration.count();
-        reportInfo() << "TIMESTAMP converted: " << timestamp << reportEnd();
+        uint64_t timestamp = round(ts->GetTimeStamp()*1000); // convert to milliseconds
         if(strcmp(headerMsg->GetDeviceType(), "TRANSFORM") == 0 && !ignore) {
             mTransformStreamNames.insert(headerMsg->GetDeviceName());
             mStreamDescriptions[headerMsg->GetDeviceName()] = "Transform";
@@ -224,7 +225,14 @@ void OpenIGTLinkStreamer::generateStream() {
             transMsg->SetMessageHeader(headerMsg);
             transMsg->AllocatePack();
             // Receive transform data from the socket
-            mSocketWrapper->socket->Receive(transMsg->GetPackBodyPointer(), transMsg->GetPackBodySize());
+            bool timeout = false;
+            int r = mSocketWrapper->socket->Receive(transMsg->GetPackBodyPointer(), transMsg->GetPackBodySize(), timeout);
+			if(r == 0 || timeout) {
+				//connectionLostSignal();
+				mSocketWrapper->socket->CloseSocket();
+				break;
+			}
+
             // Deserialize the transform data
             // If you want to skip CRC check, call Unpack() without argument.
             int c = transMsg->Unpack(1);
@@ -233,17 +241,17 @@ void OpenIGTLinkStreamer::generateStream() {
                 // Retrive the transform data
                 igtl::Matrix4x4 matrix;
                 transMsg->GetMatrix(matrix);
-                Matrix4f fastMatrix;
+                Affine3f fastTransform;
                 for(int i = 0; i < 4; i++) {
                 for(int j = 0; j < 4; j++) {
-                    fastMatrix(i,j) = matrix[i][j];
+                    fastTransform.matrix()(i,j) = matrix[i][j];
                 }}
-                reportInfo() << fastMatrix << Reporter::end();
+                reportInfo() << fastTransform.matrix() << Reporter::end();
 
                 try {
-                    AffineTransformation::pointer T = AffineTransformation::New();
-                    T->getTransform().matrix() = fastMatrix;
+                    auto T = Transform::create(fastTransform);
                     T->setCreationTimestamp(timestamp);
+                    addTimestamp(timestamp);
                     addOutputData(mOutputPortDeviceNames[deviceName], T);
                 } catch(NoMoreFramesException &e) {
                     throw e;
@@ -272,7 +280,13 @@ void OpenIGTLinkStreamer::generateStream() {
             imgMsg->AllocatePack();
 
             // Receive transform data from the socket
-            mSocketWrapper->socket->Receive(imgMsg->GetPackBodyPointer(), imgMsg->GetPackBodySize());
+            bool timeout = false;
+            int r = mSocketWrapper->socket->Receive(imgMsg->GetPackBodyPointer(), imgMsg->GetPackBodySize(), timeout);
+			if(r == 0 || timeout) {
+				//connectionLostSignal();
+				mSocketWrapper->socket->CloseSocket();
+				break;
+			}
 
             // Deserialize the transform data
             // If you want to skip CRC check, call Unpack() without argument.
@@ -300,8 +314,9 @@ void OpenIGTLinkStreamer::generateStream() {
                 mStreamDescriptions[headerMsg->GetDeviceName()] = description;
 
                 try {
-                    Image::pointer image = createFASTImageFromMessage(imgMsg, getMainDevice());
-                    image->setCreationTimestamp(timestamp);
+                    auto image = createFASTImageFromMessage(imgMsg, getMainDevice());
+					image->setCreationTimestamp(timestamp);
+					addTimestamp(timestamp);
                     addOutputData(mOutputPortDeviceNames[deviceName], image);
                 } catch(NoMoreFramesException &e) {
                     throw e;
@@ -324,8 +339,16 @@ void OpenIGTLinkStreamer::generateStream() {
             message->AllocatePack();
 
             // Receive transform data from the socket
-            mSocketWrapper->socket->Receive(message->GetPackBodyPointer(), message->GetPackBodySize());
-            if(statusMessageCounter > 3 && !mInFreezeMode) {
+            bool timeout = false;
+            int r = mSocketWrapper->socket->Receive(message->GetPackBodyPointer(), message->GetPackBodySize(), timeout);
+            if (r == 0 || timeout) {
+                //connectionLostSignal();
+                mSocketWrapper->socket->CloseSocket();
+                break;
+            }
+
+
+            if (statusMessageCounter > 3 && !mInFreezeMode) {
                 reportInfo() << "3 STATUS MESSAGE received, freeze detected" << Reporter::end();
                 mInFreezeMode = true;
                 //freezeSignal();
@@ -333,6 +356,30 @@ void OpenIGTLinkStreamer::generateStream() {
                 // If no frames has been inserted, stop
                 frameAdded();
             }
+        } else if(strcmp(headerMsg->GetDeviceType(), "STRING") == 0 && !ignore) {
+            // Receive generic message
+            igtl::StringMessage::Pointer stringMsg;
+            stringMsg = igtl::StringMessage::New();
+            stringMsg->SetMessageHeader(headerMsg);
+            stringMsg->AllocatePack();
+
+            // Receive transform data from the socket
+            bool timeout = false;
+            int r = mSocketWrapper->socket->Receive(stringMsg->GetPackBodyPointer(), stringMsg->GetPackBodySize(), timeout);
+            if (r == 0 || timeout) {
+                //connectionLostSignal();
+                mSocketWrapper->socket->CloseSocket();
+                break;
+            }
+
+            stringMsg->Unpack();
+            auto message = stringMsg->GetString();
+
+            auto fastString = String::create(message);
+            fastString->setCreationTimestamp(timestamp);
+
+            addTimestamp(timestamp);
+            addOutputData(mOutputPortDeviceNames[deviceName], fastString);
        } else {
            // Receive generic message
           igtl::MessageBase::Pointer message;
@@ -341,7 +388,15 @@ void OpenIGTLinkStreamer::generateStream() {
           message->AllocatePack();
 
           // Receive transform data from the socket
-          mSocketWrapper->socket->Receive(message->GetPackBodyPointer(), message->GetPackBodySize());
+          bool timeout = false;
+          int r = mSocketWrapper->socket->Receive(message->GetPackBodyPointer(), message->GetPackBodySize(), timeout);
+		  if(r == 0 || timeout) {
+				//connectionLostSignal();
+				mSocketWrapper->socket->CloseSocket();
+				break;
+	     }
+
+
 
           // Deserialize the transform data
           // If you want to skip CRC check, call Unpack() without argument.
@@ -366,16 +421,18 @@ void OpenIGTLinkStreamer::loadAttributes() {
     setConnectionPort(getIntegerAttribute("port"));
 }
 
-OpenIGTLinkStreamer::OpenIGTLinkStreamer() {
+OpenIGTLinkStreamer::OpenIGTLinkStreamer(std::string ipAddress, int port) {
     mIsModified = true;
     mNrOfFrames = 0;
-    mAddress = "localhost";
-    mPort = 18944;
     mMaximumNrOfFramesSet = false;
     mInFreezeMode = false;
 
-    createStringAttribute("address", "Connection address", "Connection address", mAddress);
-    createIntegerAttribute("port", "Connection port", "Connection port", mPort);
+    createStringAttribute("address", "Connection address", "Connection address", ipAddress);
+    createIntegerAttribute("port", "Connection port", "Connection port", port);
+
+    setConnectionAddress(ipAddress);
+    setConnectionPort(port);
+    setStreamingMode(StreamingMode::NewestFrameOnly);
 }
 
 void OpenIGTLinkStreamer::execute() {
@@ -397,4 +454,48 @@ void OpenIGTLinkStreamer::execute() {
     waitForFirstFrame();
 }
 
+void OpenIGTLinkStreamer::addTimestamp(uint64_t timestamp) {
+    m_timestamps.push_back(timestamp);
+    if(m_timestamps.size() == 10)
+        m_timestamps.pop_front();
+}
+
+float OpenIGTLinkStreamer::getCurrentFramerate() {
+    if(m_timestamps.empty())
+        return -1;
+    uint64_t sum = 0;
+    uint64_t previous = m_timestamps[0];
+    int counter = 0;
+    for(int i = 1; i < m_timestamps.size(); ++i) {
+        uint64_t duration = m_timestamps[i] - previous;
+        previous = m_timestamps[i];
+        sum += duration;
+        ++counter;
+    }
+    return 1000.0f/((float)sum / counter); // Timestamps are i milliseconds. get framerate in per second
+}
+
+DataChannel::pointer OpenIGTLinkStreamer::getOutputPort(std::string deviceName) {
+    uint portID;
+    if(mOutputPortDeviceNames.count(deviceName) == 0) {
+        portID = getNrOfOutputPorts();
+        createOutputPort(portID);
+        mOutputPortDeviceNames[deviceName] = portID;
+    } else {
+        portID = mOutputPortDeviceNames[deviceName];
+    }
+    return Streamer::getOutputPort(portID);
+}
+
+uint OpenIGTLinkStreamer::createOutputPortForDevice(std::string deviceName) {
+    uint portID;
+    if(mOutputPortDeviceNames.count(deviceName) == 0) {
+        portID = getNrOfOutputPorts();
+        createOutputPort(portID);
+        mOutputPortDeviceNames[deviceName] = portID;
+    } else {
+        portID = mOutputPortDeviceNames[deviceName];
+    }
+    return portID;
+}
 } // end namespace fast

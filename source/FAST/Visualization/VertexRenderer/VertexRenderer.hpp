@@ -1,5 +1,4 @@
-#ifndef POINT_RENDERER_HPP_
-#define POINT_RENDERER_HPP_
+#pragma once
 
 #include "FAST/Visualization/Renderer.hpp"
 #include "FAST/Data/Mesh.hpp"
@@ -8,9 +7,27 @@
 
 namespace fast {
 
+/**
+ * @brief Renders vertices as a circular points
+ *
+ * @ingroup renderers
+ * @sa Mesh
+ */
 class FAST_EXPORT  VertexRenderer : public Renderer {
-    FAST_OBJECT(VertexRenderer)
+    FAST_PROCESS_OBJECT(VertexRenderer)
     public:
+        /**
+         * @brief Create instance
+         * @param size Vertex point size
+         * @param color
+         * @param drawOnTop
+         * @return instance
+         */
+        FAST_CONSTRUCTOR(VertexRenderer,
+                         float, size, = 10.0f,
+                         Color, color, = Color::Null(),
+                         bool, drawOnTop, = false
+        );
         uint addInputConnection(DataChannel::pointer port) override;
         uint addInputConnection(DataChannel::pointer port, Color color, float size);
         uint addInputData(DataObject::pointer data) override;
@@ -21,22 +38,13 @@ class FAST_EXPORT  VertexRenderer : public Renderer {
         void setDrawOnTop(uint inputNr, bool drawOnTop);
         void setColor(uint inputNr, Color color);
         void setSize(uint inputNr, float size);
-        void draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D);
-		void draw2D(
-                cl::BufferGL PBO,
-                uint width,
-                uint height,
-                Affine3f pixelToViewportTransform,
-                float PBOspacing,
-                Vector2f translation
-        );
+        void
+        draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D, int viewWidth,
+             int viewHeight);
     private:
-        VertexRenderer();
-
         float mDefaultPointSize;
         Color mDefaultColor;
         bool mDefaultDrawOnTop;
-        bool mDefaultColorSet;
         std::unordered_map<uint, float> mInputSizes;
         std::unordered_map<uint, Color> mInputColors;
         std::unordered_map<uint, bool> mInputDrawOnTop;
@@ -44,5 +52,3 @@ class FAST_EXPORT  VertexRenderer : public Renderer {
 };
 
 }
-
-#endif

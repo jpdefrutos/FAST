@@ -1,7 +1,5 @@
 /**
- * Examples/Segmentation/neuralNetworkWSISegmentation.cpp
- *
- * If you edit this example, please also update the wiki and source code file in the repository.
+ * @example neuralNetworkWSIClassification.cpp
  */
 #include <FAST/Tools/CommandLineParser.hpp>
 #include <FAST/Algorithms/NeuralNetwork/InferenceEngineManager.hpp>
@@ -17,10 +15,9 @@
 using namespace fast;
 
 int main(int argc, char** argv) {
-    Reporter::setGlobalReportMethod(Reporter::COUT);
     CommandLineParser parser("Neural network WSI classification example");
     parser.addChoice("inference-engine",
-            {"default", "OpenVINO", "TensorFlowCPU", "TensorFlowCUDA", "TensorRT", "TensorFlowROCm"},
+            {"default", "OpenVINO", "TensorFlow", "TensorRT", "ONNXRuntime"},
             "default",
             "Which neural network inference engine to use");
     parser.addPositionVariable(1,
@@ -29,51 +26,37 @@ int main(int argc, char** argv) {
             "WSI to process");
     parser.parse(argc, argv);
 
-    auto importer = WholeSlideImageImporter::New();
-    importer->setFilename(parser.get("filename"));
+    auto importer = WholeSlideImageImporter::create(parser.get("filename"));
 
-    auto tissueSegmentation = TissueSegmentation::New();
-    tissueSegmentation->setInputConnection(importer->getOutputPort());
+    auto tissueSegmentation = TissueSegmentation::create()->connect(importer);
 
-    auto generator = PatchGenerator::New();
-    generator->setPatchSize(512, 512);
-    generator->setPatchLevel(0);
-    generator->setInputConnection(importer->getOutputPort());
-    generator->setInputConnection(1, tissueSegmentation->getOutputPort());
+    auto generator = PatchGenerator::create(512, 512, 1, 0)
+            ->connect(importer)
+            ->connect(1, tissueSegmentation);
 
-    auto network = NeuralNetwork::New();
-    if(parser.get("inference-engine") != "default") {
-        network->setInferenceEngine(parser.get("inference-engine"));
+    InferenceEngine::pointer engine;
+    if(parser.get("inference-engine") == "default") {
+        engine = InferenceEngineManager::loadBestAvailableEngine();
+    } else {
+        engine = InferenceEngineManager::loadEngine(parser.get("inference-engine"));
     }
-    const auto engine = network->getInferenceEngine()->getName();
-    network->setInferenceEngine(engine);
-    if(engine.substr(0, 10) == "TensorFlow") {
-        network->setOutputNode(0, "sequential/dense_1/Softmax", NodeType::TENSOR);
-    } else if(engine == "TensorRT") {
-        network->setInputNode(0, "input_1", NodeType::IMAGE, TensorShape{-1, 3, 512, 512});
-        network->setOutputNode(0, "sequential/dense_1/Softmax", NodeType::TENSOR, TensorShape{-1, 3});
-    }
-    network->load(Config::getTestDataPath() + "NeuralNetworkModels/wsi_classification." +
-                  network->getInferenceEngine()->getDefaultFileExtension());
-    network->setInputConnection(generator->getOutputPort());
+    auto network = NeuralNetwork::create(
+            Config::getTestDataPath() + "NeuralNetworkModels/wsi_classification." + getModelFileExtension(engine->getPreferredModelFormat()),
+            {}, {}, engine->getName())
+        ->connect(generator);
     network->setScaleFactor(1.0f / 255.0f);
 
-    auto stitcher = PatchStitcher::New();
-    stitcher->setInputConnection(network->getOutputPort());
+    auto stitcher = PatchStitcher::create()
+            ->connect(network);
 
-    auto renderer = ImagePyramidRenderer::New();
-    renderer->addInputConnection(importer->getOutputPort());
+    auto renderer = ImagePyramidRenderer::create()
+            ->connect(importer);
 
-    auto heatmapRenderer = HeatmapRenderer::New();
-    heatmapRenderer->addInputConnection(stitcher->getOutputPort());
-    //heatmapRenderer->setMinConfidence(0.5);
-    heatmapRenderer->setMaxOpacity(0.3);
-    //heatmapRenderer->setInterpolation(false);
+    auto heatmapRenderer = HeatmapRenderer::create(true, false, 0.5, 0.3)
+            ->connect(stitcher);
 
-    auto window = SimpleWindow::New();
-    window->addRenderer(renderer);
-    window->addRenderer(heatmapRenderer);
+    auto window = SimpleWindow2D::create()
+            ->connect({renderer, heatmapRenderer});
     window->enableMaximized();
-    window->set2DMode();
-    window->start();
+    window->run();
 }

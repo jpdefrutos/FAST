@@ -4,9 +4,11 @@
 
 namespace fast {
 
-void Tensor::create(std::unique_ptr<float[]> data, TensorShape shape) {
+void Tensor::init(std::unique_ptr<float[]> data, TensorShape shape) {
     if(shape.empty())
         throw Exception("Shape can't be empty");
+    if(shape.getUnknownDimensions() > 0)
+        throw Exception("Shape can't have unknown dimensions");
     m_data = std::move(data);
     m_shape = shape;
     m_spacing = VectorXf::Ones(shape.getDimensions());
@@ -14,43 +16,46 @@ void Tensor::create(std::unique_ptr<float[]> data, TensorShape shape) {
     if(m_shape.getDimensions() >= 3) {
         const int width = m_shape[m_shape.getDimensions() - 2];
         const int height = m_shape[m_shape.getDimensions() - 3];
-        mBoundingBox = BoundingBox(Vector3f(width, height, 1));
+        mBoundingBox = DataBoundingBox(Vector3f(width, height, 1));
     }
 }
 
-void Tensor::create(TensorShape shape) {
+Tensor::Tensor(std::unique_ptr<float[]> data, TensorShape shape) {
+    init(std::move(data), shape);
+}
+
+Tensor::Tensor(const float* const data, TensorShape shape) {
     if(shape.empty())
         throw Exception("Shape can't be empty");
     if(shape.getUnknownDimensions() > 0)
         throw Exception("When creating a tensor, shape must be fully defined");
-    m_data = make_uninitialized_unique<float[]>(shape.getTotalSize());
-    m_spacing = VectorXf::Ones(shape.getDimensions());
-    mHostDataIsUpToDate = true;
-    if(m_shape.getDimensions() >= 3) {
-        const int width = m_shape[m_shape.getDimensions() - 2];
-        const int height = m_shape[m_shape.getDimensions() - 3];
-        mBoundingBox = BoundingBox(Vector3f(width, height, 1));
-    }
+    auto newData = make_uninitialized_unique<float[]>(shape.getTotalSize());
+    std::memcpy(newData.get(), data, shape.getTotalSize()*sizeof(float));
+    init(std::move(newData), shape);
 }
 
-void Tensor::create(std::initializer_list<float> data) {
-	if(data.size() == 0)
-		throw Exception("Shape can't be empty");
 
-	m_data = std::make_unique<float[]>(data.size());
+Tensor::Tensor(TensorShape shape) {
+    if(shape.empty())
+        throw Exception("Shape can't be empty");
+    if(shape.getUnknownDimensions() > 0)
+        throw Exception("When creating a tensor, shape must be fully defined");
+    auto newData = make_uninitialized_unique<float[]>(shape.getTotalSize());
+    init(std::move(newData), shape);
+}
+
+Tensor::Tensor(std::initializer_list<float> data) {
+    if(data.size() == 0)
+        throw Exception("Shape can't be empty");
+
+    auto newData = make_uninitialized_unique<float[]>(data.size());
 	int i = 0;
 	for(auto item : data) {
-		m_data[i] = item;
+		newData[i] = item;
 		++i;
 	}
-	m_shape = TensorShape({ (int)data.size() });
-    m_spacing = VectorXf::Ones(m_shape.getDimensions());
-    mHostDataIsUpToDate = true;
-    if(m_shape.getDimensions() >= 3) {
-        const int width = m_shape[m_shape.getDimensions() - 2];
-        const int height = m_shape[m_shape.getDimensions() - 3];
-        mBoundingBox = BoundingBox(Vector3f(width, height, 1));
-    }
+    auto shape = TensorShape({(int)data.size()});
+    init(std::move(newData), shape);
 }
 
 void Tensor::expandDims(int position) {
@@ -243,8 +248,8 @@ void Tensor::updateHostData() {
 void Tensor::setSpacing(VectorXf spacing) {
     if(!isInitialized())
         throw Exception("Tensor was not initialized");
-    if(spacing.size() != m_shape.getDimensions())
-        throw Exception("Spacing vector has different size than shape");
+    //if(spacing.size() != m_shape.getDimensions())
+    //    throw Exception("Spacing vector has different size than shape");
     m_spacing = spacing;
 }
 
@@ -260,19 +265,19 @@ void Tensor::deleteDimension(int i) {
     }
 }
 
-BoundingBox Tensor::getTransformedBoundingBox() const {
-    AffineTransformation::pointer T = SceneGraph::getAffineTransformationFromNode(getSceneGraphNode());
+DataBoundingBox Tensor::getTransformedBoundingBox() const {
+    auto T = SceneGraph::getEigenTransformFromNode(getSceneGraphNode());
 
     // Add image spacing
-    T->getTransform().scale(Vector3f(getSpacing().x(), getSpacing().y(), getSpacing().z()));
+    T.scale(Vector3f(getSpacing().x(), getSpacing().y(), getSpacing().z()));
 
     return SpatialDataObject::getBoundingBox().getTransformedBoundingBox(T);
 }
 
-BoundingBox Tensor::getBoundingBox() const {
+DataBoundingBox Tensor::getBoundingBox() const {
     // Add image spacing
-    AffineTransformation::pointer T = AffineTransformation::New();
-    T->getTransform().scale(Vector3f(getSpacing().x(), getSpacing().y(), getSpacing().z()));
+    auto T = Affine3f::Identity();
+    T.scale(Vector3f(getSpacing().x(), getSpacing().y(), getSpacing().z()));
 
     return SpatialDataObject::getBoundingBox().getTransformedBoundingBox(T);
 }

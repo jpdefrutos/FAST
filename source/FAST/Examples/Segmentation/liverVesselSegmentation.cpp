@@ -6,25 +6,20 @@
 #include "FAST/Algorithms/SurfaceExtraction/SurfaceExtraction.hpp"
 #include "FAST/Visualization/TriangleRenderer/TriangleRenderer.hpp"
 #include "FAST/Visualization/SimpleWindow.hpp"
+#include <FAST/Tools/CommandLineParser.hpp>
 
 using namespace fast;
 
 int main(int argc, char** argv) {
-    // NOTE: This code is atm made for signed 16 bit integer CT data
-    if(argc < 2) {
-        std::cout << "usage: " << argv[0] << " /path/to/CT_file" << std::endl;
-        return 0;
-    }
-    std::string filename = argv[1];
+    CommandLineParser parser("Liver vessel segmentation");
+    parser.addPositionVariable(1, "filename", true, "Path to CT file");
+    parser.parse(argc, argv);
 
-    auto importer = ImageFileImporter::New();
-    importer->setFilename(filename);
+    auto importer = ImageFileImporter::create(parser.get("filename"));
 
-    auto converter = HounsefieldConverter::New();
-    converter->setInputConnection(importer->getOutputPort());
+    auto converter = HounsefieldConverter::create()->connect(importer);
 
-    auto tubeExtraction = TubeSegmentationAndCenterlineExtraction::New();
-    tubeExtraction->setInputConnection(converter->getOutputPort());
+    auto tubeExtraction = TubeSegmentationAndCenterlineExtraction::create()->connect(converter);
 
     // Parameters
     tubeExtraction->extractBrightTubes();
@@ -38,22 +33,20 @@ int main(int argc, char** argv) {
     tubeExtraction->setKeepLargestTree(true);
     tubeExtraction->enableAutomaticCropping();
 
-    auto renderer = SliceRenderer::New();
-    renderer->addInputConnection(importer->getOutputPort(), PLANE_Z);
+    auto renderer = SliceRenderer::create(PLANE_Z)->connect(importer);
 
-    auto lineRenderer = LineRenderer::New();
-    lineRenderer->addInputConnection(tubeExtraction->getCenterlineOutputPort(), Color::Blue(), 1);
-    lineRenderer->setDefaultDrawOnTop(true);
+    auto lineRenderer = LineRenderer::create(Color::Blue(), true)
+        ->connect(tubeExtraction, 1);
 
-    auto surfaceExtraction = SurfaceExtraction::New();
-    surfaceExtraction->setInputConnection(tubeExtraction->getSegmentationOutputPort());
+    auto surfaceExtraction = SurfaceExtraction::create()
+        ->connect(tubeExtraction);
 
-    auto triangleRenderer = TriangleRenderer::New();
-    triangleRenderer->addInputConnection(surfaceExtraction->getOutputPort());
+    auto triangleRenderer = TriangleRenderer::create()->connect(surfaceExtraction);
 
-    auto window = SimpleWindow::New();
-    window->addRenderer(renderer);
-    window->addRenderer(triangleRenderer);
-    window->addRenderer(lineRenderer);
-    window->start();
+    auto window = SimpleWindow3D::create()->connect({
+        renderer,
+        triangleRenderer,
+        lineRenderer
+	});
+    window->run();
 }

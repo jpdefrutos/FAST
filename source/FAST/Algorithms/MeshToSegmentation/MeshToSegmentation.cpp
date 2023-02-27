@@ -1,17 +1,18 @@
 #include "MeshToSegmentation.hpp"
 #include "FAST/Data/Mesh.hpp"
-#include "FAST/Data/Segmentation.hpp"
+#include "FAST/Data/Image.hpp"
 #include "FAST/Utility.hpp"
 
 namespace fast {
 
-MeshToSegmentation::MeshToSegmentation() {
+MeshToSegmentation::MeshToSegmentation(Vector3i size, Vector3f spacing) {
 	createInputPort<Mesh>(0);
 	createInputPort<Image>(1, false);
-	createOutputPort<Segmentation>(0);
+	createOutputPort<Image>(0);
 	createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/MeshToSegmentation/MeshToSegmentation.cl");
 
-	mResolution = Vector3i::Zero();
+	mResolution = size;
+	m_spacing = spacing;
 }
 
 void MeshToSegmentation::setOutputImageResolution(uint x, uint y, uint z) {
@@ -31,17 +32,17 @@ void MeshToSegmentation::execute() {
         is2D = mResolution.z() == 1;
     }
 
-    Segmentation::pointer segmentation = getOutputData<Segmentation>();
+    Image::pointer segmentation;
 	// Initialize output segmentation image and size
     if(mResolution == Vector3i::Zero()) {
         // If resolution is not specified, use input image resolution
-		segmentation->createFromImage(image);
+		segmentation = Image::createSegmentationFromImage(image);
 	} else {
 		// Use specified resolution
         if(is2D) {
-			segmentation->create(mResolution.x(), mResolution.y(), TYPE_UINT8, 1);
+			segmentation = Image::create(mResolution.x(), mResolution.y(), TYPE_UINT8, 1);
 		} else {
-			segmentation->create(mResolution.x(), mResolution.y(), mResolution.z(), TYPE_UINT8, 1);
+			segmentation = Image::create(mResolution.x(), mResolution.y(), mResolution.z(), TYPE_UINT8, 1);
 		}
 
 		// Set correct spacing
@@ -51,13 +52,10 @@ void MeshToSegmentation::execute() {
             heightInMM = image->getSpacing().y() * image->getHeight();
             depthInMM = image->getSpacing().z() * image->getDepth();
             SceneGraph::setParentNode(segmentation, image);
+            segmentation->setSpacing(widthInMM/mResolution.x(), heightInMM/mResolution.y(), depthInMM/mResolution.z());
         } else {
-		    widthInMM = 1.0f*mResolution[0];
-            heightInMM = 1.0f*mResolution[1];
-            depthInMM = 1.0f*mResolution[2];
+            segmentation->setSpacing(m_spacing);
 		}
-		segmentation->setSpacing(widthInMM/mResolution.x(), heightInMM/mResolution.y(), depthInMM/mResolution.z());
-
 	}
 
 	ExecutionDevice::pointer mainDevice = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
@@ -83,7 +81,6 @@ void MeshToSegmentation::execute() {
 		kernel.setArg(3, *outputAccess->get2DImage());
 		kernel.setArg(4, segmentation->getSpacing().x());
 		kernel.setArg(5, segmentation->getSpacing().y());
-		kernel.setArg(6, (uchar)mLabel);
 		queue.enqueueNDRangeKernel(
 				kernel,
 				cl::NullRange,
@@ -100,7 +97,6 @@ void MeshToSegmentation::execute() {
 		kernel.setArg(4, segmentation->getSpacing().x());
 		kernel.setArg(5, segmentation->getSpacing().y());
 		kernel.setArg(6, segmentation->getSpacing().z());
-        kernel.setArg(7, (uchar)mLabel);
 		queue.enqueueNDRangeKernel(
 				kernel,
 				cl::NullRange,
@@ -109,6 +105,7 @@ void MeshToSegmentation::execute() {
 		);
 	}
     queue.finish();
+	addOutputData(0, segmentation);
 }
 
 }

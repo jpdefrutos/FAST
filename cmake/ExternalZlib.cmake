@@ -1,24 +1,29 @@
 # Download and set up zlib
 
-include(cmake/Externals.cmake)
-
-ExternalProject_Add(zlib
-        PREFIX ${FAST_EXTERNAL_BUILD_DIR}/zlib
-        BINARY_DIR ${FAST_EXTERNAL_BUILD_DIR}/zlib
-        GIT_REPOSITORY "https://github.com/madler/zlib.git"
-        GIT_TAG "v1.2.9"
-        CMAKE_ARGS
-            -DCMAKE_MACOSX_RPATH=ON
-        CMAKE_CACHE_ARGS
-            -DCMAKE_BUILD_TYPE:STRING=Release
-            -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-            -DCMAKE_INSTALL_MESSAGE:BOOL=LAZY
-            -DCMAKE_INSTALL_PREFIX:STRING=${FAST_EXTERNAL_INSTALL_DIR}
-)
 if(WIN32)
-	set(ZLIB_LIBRARY debug zlibd.lib optimized zlib.lib)
-else(WIN32)
-	set(ZLIB_LIBRARY ${CMAKE_SHARED_LIBRARY_PREFIX}z${CMAKE_SHARED_LIBRARY_SUFFIX})
-endif(WIN32)
-list(APPEND LIBRARIES ${ZLIB_LIBRARY})
-list(APPEND FAST_EXTERNAL_DEPENDENCIES zlib)
+	fast_download_dependency(zlib
+			1.2.9
+			bf6971104e98a8ac64c8b172f01508e95b7e4fd81e427511b5531dd1b6376b29
+			zlib.lib
+			)
+elseif(APPLE)
+if(CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+	fast_download_dependency(zlib
+			1.2.9
+			bf91823e4782458629b816c01fdf1f013d5767d977d6a35cc2fff1072082a33a
+			libz.dylib
+			)
+else()
+	fast_download_dependency(zlib
+			1.2.9
+			74f790268fe20c564345e404f5836df9e24d1a603075adf4581cf58a85cc4dba
+			libz.dylib
+			)
+endif()
+else()
+	fast_download_dependency(zlib
+			1.2.9
+			72d5aa4d2e12266858ff668ad9e0d44e707a42112008f566777f9bea1a792274
+			libz.so
+			)
+endif()

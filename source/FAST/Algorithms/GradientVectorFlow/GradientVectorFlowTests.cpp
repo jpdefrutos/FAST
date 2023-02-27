@@ -1,7 +1,7 @@
 #include "FAST/Testing.hpp"
 #include "EulerGradientVectorFlow.hpp"
 #include "MultigridGradientVectorFlow.hpp"
-#include "FAST/Algorithms/ScaleImage/ScaleImage.hpp"
+#include "FAST/Algorithms/IntensityNormalization/IntensityNormalization.hpp"
 #include "FAST/Algorithms/ImageGradient/ImageGradient.hpp"
 #include "FAST/Importers/ImageFileImporter.hpp"
 #include "FAST/Data/Image.hpp"
@@ -75,7 +75,7 @@ TEST_CASE("Gradient vector flow with Euler method 2D 16 bit", "[fast][GVF][Gradi
     ImageFileImporter::pointer importer = ImageFileImporter::New();
     importer->setFilename(Config::getTestDataPath() + "US/Heart/ApicalFourChamber/US-2D_0.mhd");
 
-    ScaleImage::pointer normalize = ScaleImage::New();
+    IntensityNormalization::pointer normalize = IntensityNormalization::New();
     normalize->setInputConnection(importer->getOutputPort());
 
     ImageGradient::pointer gradient = ImageGradient::New();
@@ -97,7 +97,7 @@ TEST_CASE("Gradient vector flow with Euler method 2D 32 bit", "[fast][GVF][Gradi
     ImageFileImporter::pointer importer = ImageFileImporter::New();
     importer->setFilename(Config::getTestDataPath() + "US/Heart/ApicalFourChamber/US-2D_0.mhd");
 
-    ScaleImage::pointer normalize = ScaleImage::New();
+    IntensityNormalization::pointer normalize = IntensityNormalization::New();
     normalize->setInputConnection(importer->getOutputPort());
 
     ImageGradient::pointer gradient = ImageGradient::New();
@@ -118,7 +118,7 @@ TEST_CASE("Gradient vector flow with Euler method 3D 16 bit", "[fast][GVF][Gradi
     ImageFileImporter::pointer importer = ImageFileImporter::New();
     importer->setFilename(Config::getTestDataPath() + "US/Ball/US-3Dt_0.mhd");
 
-    ScaleImage::pointer normalize = ScaleImage::New();
+    IntensityNormalization::pointer normalize = IntensityNormalization::New();
     normalize->setInputConnection(importer->getOutputPort());
 
     ImageGradient::pointer gradient = ImageGradient::New();
@@ -136,11 +136,11 @@ TEST_CASE("Gradient vector flow with Euler method 3D 16 bit", "[fast][GVF][Gradi
           < 0.001);
 }
 
-TEST_CASE("Gradient vector flow with Euler method 3D 32 bit", "[fast][GVF][GradientVectorFlow][EulerGradientVectorFlow][3D]") {
+TEST_CASE("Gradient vector flow with Euler method 3D 32 bit", "[fast][GVF][GradientVectorFlow][EulerGradientVectorFlow][3D][unstablemac]") {
     ImageFileImporter::pointer importer = ImageFileImporter::New();
     importer->setFilename(Config::getTestDataPath() + "US/Ball/US-3Dt_0.mhd");
 
-    ScaleImage::pointer normalize = ScaleImage::New();
+    IntensityNormalization::pointer normalize = IntensityNormalization::New();
     normalize->setInputConnection(importer->getOutputPort());
 
     ImageGradient::pointer gradient = ImageGradient::New();
@@ -161,7 +161,7 @@ TEST_CASE("Gradient vector flow with Multigrid method 3D 16 bit", "[fast][GVF][G
     ImageFileImporter::pointer importer = ImageFileImporter::New();
     importer->setFilename(Config::getTestDataPath() + "US/Ball/US-3Dt_0.mhd");
 
-    ScaleImage::pointer normalize = ScaleImage::New();
+    IntensityNormalization::pointer normalize = IntensityNormalization::New();
     normalize->setInputConnection(importer->getOutputPort());
 
     ImageGradient::pointer gradient = ImageGradient::New();
@@ -179,11 +179,11 @@ TEST_CASE("Gradient vector flow with Multigrid method 3D 16 bit", "[fast][GVF][G
           < 0.001);
 }
 
-TEST_CASE("Gradient vector flow with Multigrid method 3D 32 bit", "[fast][GVF][GradientVectorFlow][MultigridGradientVectorFlow][3D]") {
+TEST_CASE("Gradient vector flow with Multigrid method 3D 32 bit", "[fast][GVF][GradientVectorFlow][MultigridGradientVectorFlow][3D][unstablemac]") {
     ImageFileImporter::pointer importer = ImageFileImporter::New();
     importer->setFilename(Config::getTestDataPath() + "US/Ball/US-3Dt_0.mhd");
 
-    ScaleImage::pointer normalize = ScaleImage::New();
+    IntensityNormalization::pointer normalize = IntensityNormalization::New();
     normalize->setInputConnection(importer->getOutputPort());
 
     ImageGradient::pointer gradient = ImageGradient::New();

@@ -9,27 +9,71 @@ ImageClassificationNetwork::ImageClassificationNetwork() {
 	createStringAttribute("labels", "Labels", "Name of each class", "");
 }
 
+ImageClassificationNetwork::ImageClassificationNetwork(std::string modelFilename, std::vector<std::string> labels,
+                                                       float scaleFactor, float meanIntensity,
+                                                       float stanardDeviationIntensity,
+                                                       int temporalWindow,
+                                                       std::vector<NeuralNetworkNode> inputNodes,
+                                                       std::vector<NeuralNetworkNode> outputNodes,
+                                                       std::string inferenceEngine,
+                                                       std::vector<std::string> customPlugins) : NeuralNetwork(modelFilename,scaleFactor,meanIntensity,stanardDeviationIntensity,inputNodes,outputNodes,inferenceEngine,customPlugins) {
+    createOutputPort<ImageClassification>(0);
+    setLabels(labels);
+    setTemporalWindow(temporalWindow);
+}
+
+ImageClassificationNetwork::ImageClassificationNetwork(std::string modelFilename,
+                                                       std::vector<NeuralNetworkNode> inputNodes,
+                                                       std::vector<NeuralNetworkNode> outputNodes,
+                                                       std::string inferenceEngine,
+                                                       std::vector<std::string> customPlugins) : NeuralNetwork(modelFilename, inputNodes, outputNodes, inferenceEngine, customPlugins) {
+    createOutputPort<ImageClassification>(0);
+}
+
 void ImageClassificationNetwork::setLabels(std::vector<std::string> labels) {
 	mLabels = labels;
+    setModified(true);
 }
 
 void ImageClassificationNetwork::execute() {
 
-    run();
+    runNeuralNetwork();
 
-    Tensor::pointer tensor = m_engine->getOutputNodes().begin()->second.data;
-    TensorAccess::pointer access = tensor->getAccess(ACCESS_READ);
+    // TODO batch support
+    auto tensor = std::dynamic_pointer_cast<Tensor>(m_processedOutputData[0]);
+    if(!tensor)
+        throw Exception("ImageClassificationNetwork batch support not implemented");
+    auto access = tensor->getAccess(ACCESS_READ);
 
-    auto data = access->getData<2>();
-    ImageClassification::pointer output = getOutputData<ImageClassification>(0);
-    for(int i = 0; i < data.dimension(0); ++i) { // for each input image
-        std::map<std::string, float> mapResult;
-        for(int j = 0; j < data.dimension(1); ++j) { // for each class
-            mapResult[mLabels[j]] = data(i, j);
-            reportInfo() << mLabels[j] << ": " << data(i, j) << reportEnd();
+    auto data = access->getData<1>();
+    if(mLabels.size() != data.dimension(0)) {
+        throw Exception("Incorrect number of labels given to ImageClassificationNetwork");
+    }
+    std::map<std::string, float> mapResult;
+    for(int j = 0; j < data.dimension(0); ++j) { // for each class
+        mapResult[mLabels[j]] = data(j);
+        reportInfo() << mLabels[j] << ": " << data(j) << reportEnd();
+    }
+
+    if(m_temporalWindow > 1) {
+        // Average over temporal window
+        m_results.push_back(mapResult);
+        if(m_results.size() > m_temporalWindow) m_results.pop_front();
+        std::map<std::string, float> outputMap;
+        for(auto& label : mLabels)
+            outputMap[label] = 0.0f;
+        for(auto& map : m_results) {
+            for(auto& item : map) {
+                outputMap[item.first] += item.second;
+            }
         }
-
-        output->create(mapResult);
+        for(auto& label : mLabels)
+            outputMap[label] /= m_results.size();
+        auto output = ImageClassification::create(outputMap);
+        addOutputData(0, output);
+    } else {
+        auto output = ImageClassification::create(mapResult);
+        addOutputData(0, output);
     }
 }
 
@@ -38,10 +82,18 @@ void ImageClassificationNetwork::loadAttributes() {
 	setLabels(getStringListAttribute("labels"));
 }
 
-ClassificationToText::ClassificationToText() {
+void ImageClassificationNetwork::setTemporalWindow(int window) {
+    if(window < 1)
+        throw Exception("Temporal window in ImageClassificationNetwork must be > 0");
+    m_temporalWindow = window;
+    setModified(true);
+}
+
+ClassificationToText::ClassificationToText(int bufferSize) {
     createInputPort<ImageClassification>(0);
     createOutputPort<Text>(0);
     createIntegerAttribute("average_size", "Average size", "nr of frames to average", 100);
+    setBufferSize(bufferSize);
 }
 
 void ClassificationToText::loadAttributes() {
@@ -49,11 +101,9 @@ void ClassificationToText::loadAttributes() {
 }
 
 void ClassificationToText::execute() {
-    ImageClassification::pointer classification = getInputData<ImageClassification>();
-    Text::pointer text = getOutputData<Text>();
+    auto classification = getInputData<ImageClassification>();
 
-    ImageClassification::access access = classification->getAccess(ACCESS_READ);
-    std::map<std::string, float> values = access->getData();
+    std::map<std::string, float> values = classification->get();
 
     // Add to buffer
     mBuffer.push_back(values);
@@ -90,7 +140,13 @@ void ClassificationToText::execute() {
     char buffer[8];
     std::sprintf(buffer, "%.2f", max);
     std::string result = label + ": " + buffer;
-    text->setText(result);
+    auto text = Text::create(result);
+    addOutputData(0, text);
+}
+
+void ClassificationToText::setBufferSize(int bufferSize) {
+    mBufferSize = bufferSize;
+    setModified(true);
 }
 
 }

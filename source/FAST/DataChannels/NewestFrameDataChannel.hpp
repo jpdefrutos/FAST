@@ -28,10 +28,13 @@ class FAST_EXPORT NewestFrameDataChannel : public DataChannel {
          */
         void setMaximumNumberOfFrames(uint frames) override;
 
+        int getMaximumNumberOfFrames() const override;
+
         /**
-         * This will unblock if this DataChannel is currently blocking. Used to stop a pipeline.
+         * @brief This will unblock if this DataChannel is currently blocking. Used to stop a pipeline.
+         * @param Error message to supply.
          */
-        void stop() override;
+        void stop(std::string errorMessage) override;
 
         // TODO consider removing, it is equal to getSize() > 0 atm
         bool hasCurrentData() override;
@@ -42,7 +45,7 @@ class FAST_EXPORT NewestFrameDataChannel : public DataChannel {
         DataObject::pointer getFrame() override;
     protected:
         std::condition_variable m_frameConditionVariable;
-        SharedPointer<DataObject> m_frame;
+        std::shared_ptr<DataObject> m_frame;
 
         DataObject::pointer getNextDataFrame() override;
 

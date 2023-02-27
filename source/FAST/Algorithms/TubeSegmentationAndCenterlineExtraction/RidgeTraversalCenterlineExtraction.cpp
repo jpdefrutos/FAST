@@ -1,7 +1,6 @@
 #include "RidgeTraversalCenterlineExtraction.hpp"
 #include "FAST/Data/Image.hpp"
 #include "FAST/Data/Mesh.hpp"
-#include "FAST/Data/Segmentation.hpp"
 #include <queue>
 #include <vector>
 #include <list>
@@ -23,7 +22,7 @@ RidgeTraversalCenterlineExtraction::RidgeTraversalCenterlineExtraction() {
     createInputPort<Image>(5, false);
 
     createOutputPort<Mesh>(0);
-    createOutputPort<Segmentation>(1);
+    createOutputPort<Image>(1);
 }
 
 typedef struct point {
@@ -544,9 +543,6 @@ void extractCenterlines(
 }
 
 void RidgeTraversalCenterlineExtraction::execute() {
-
-    Segmentation::pointer centerlineVolumeOutput = getOutputData<Segmentation>(1);
-
     Image::pointer TDF = getInputData<Image>(0);
     Vector3ui size = TDF->getSize();
     const int totalSize = size.x()*size.y()*size.z();
@@ -591,6 +587,9 @@ void RidgeTraversalCenterlineExtraction::execute() {
     if(centerlineDistances.size() == 0) {
         reportWarning() << "No centerlines were extracted" << reportEnd();
         delete[] centerlines;
+        auto centerlineVolumeOutput = Image::create(size, TYPE_UINT8, 1);
+        centerlineVolumeOutput->fill(0);
+        addOutputData(1, centerlineVolumeOutput);
         return;
     }
     reportInfo() << centerlineDistances.size() << " centerline extracted" << reportEnd();
@@ -644,13 +643,14 @@ void RidgeTraversalCenterlineExtraction::execute() {
 
     delete[] centerlines;
 
-    Mesh::pointer centerlineOutput = getOutputData<Mesh>(0);
-    centerlineOutput->create(vertices, lines);
-    centerlineVolumeOutput->create(size.x(), size.y(), size.z(), TYPE_UINT8, 1, getMainDevice(), returnCenterlines);
+    auto centerlineOutput = Mesh::create(vertices, lines);
+    auto centerlineVolumeOutput = Image::create(size.x(), size.y(), size.z(), TYPE_UINT8, 1, getMainDevice(), returnCenterlines);
     delete[] returnCenterlines;
     centerlineVolumeOutput->setSpacing(TDF->getSpacing());
     SceneGraph::setParentNode(centerlineVolumeOutput, TDF);
     SceneGraph::setParentNode(centerlineOutput, TDF);
+    addOutputData(0, centerlineOutput);
+    addOutputData(1, centerlineVolumeOutput);
 }
 
 }

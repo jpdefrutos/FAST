@@ -1,5 +1,4 @@
-#ifndef SURFACE_HPP_
-#define SURFACE_HPP_
+#pragma once
 
 #include "SpatialDataObject.hpp"
 #include "FAST/Data/Access/Access.hpp"
@@ -13,33 +12,40 @@
 
 namespace fast {
 
+
 /**
- * \brief The mesh data object contains vertices and optionally a set of lines and/or triangles.
- *      Each vertex is represented as a MeshVertex and the lines and triangles as MeshLine and MeshTriangle respectively.
+ * @brief Geometry data such as vertices, lines and triangles.
+ *
+ * The mesh data object contains vertices and optionally a set of lines and/or triangles.
+ * Each vertex is represented as a MeshVertex and the lines and triangles as MeshLine and MeshTriangle respectively.
+ *
+ * @ingroup data
  */
 class FAST_EXPORT Mesh : public SpatialDataObject {
-    FAST_OBJECT(Mesh)
+    FAST_DATA_OBJECT(Mesh)
     public:
-        void create(
-                std::vector<MeshVertex> vertices,
-                std::vector<MeshLine> lines = {},
-                std::vector<MeshTriangle> triangles = {}
-        );
-        void create(
-                uint nrOfVertices,
-                uint nrOfLInes,
-                uint nrOfTriangles,
-                bool useColors,
-                bool useNormals,
-                bool useEBO
-        );
+        /**
+         * @brief Create a mesh
+         *
+         * @param vertices
+         * @param lines
+         * @param triangles
+         */
+        FAST_CONSTRUCTOR(Mesh, 
+            std::vector<MeshVertex>, vertices, , 
+            std::vector<MeshLine>, lines, = std::vector<MeshLine>(), 
+            std::vector<MeshTriangle>, triangles, = std::vector<MeshTriangle>()
+        )
+#ifndef SWIG
+        FAST_CONSTRUCTOR(Mesh, uint, nrOfVertices,, uint, nrOfLInes,, uint, nrOfTriangles,, bool, useColors,, bool, useNormals,, bool, useEBO,);
+#endif
         VertexBufferObjectAccess::pointer getVertexBufferObjectAccess(accessType access);
         MeshAccess::pointer getMeshAccess(accessType access);
         MeshOpenCLAccess::pointer getOpenCLAccess(accessType access, OpenCLDevice::pointer device);
         int getNrOfTriangles();
         int getNrOfLines();
         int getNrOfVertices();
-        void setBoundingBox(BoundingBox box);
+        void setBoundingBox(DataBoundingBox box);
         ~Mesh();
     private:
         Mesh();
@@ -87,6 +93,3 @@ class FAST_EXPORT Mesh : public SpatialDataObject {
 };
 
 } // end namespace fast
-
-
-#endif /* SURFACE_HPP_ */

@@ -1,0 +1,265 @@
+# coding=utf-8
+import os
+os.environ['MACOSX_DEPLOYMENT_TARGET'] = '@OSX_DEPLOYMENT_TARGET@'
+from setuptools import setup, Extension
+import os.path
+import sys
+
+def get_all_filenames(path):
+    files = []
+    for root, dirs, filenames in os.walk(path):
+       for name in filenames:
+          files.append(os.path.join(root[5:], name))
+          #print(os.path.join(root[5:],name))
+    return files
+
+def get_all_linux_depedencies(path, libraries):
+    """
+    Because setup can't handle symlinks, we need to handle shared object (.so)
+    dependencies; only include one to avoid duplicates.
+    """
+    import pathlib
+    import lddwrap
+
+    result = []
+    libraries_in_path = os.listdir(path)
+    for library in libraries:
+        if not os.path.exists(os.path.join(path, library)): continue
+        if not library.startswith('libFAST.so'):
+            result.append(os.path.join(path[5:], library))
+        try:
+            deps = lddwrap.list_dependencies(path=pathlib.Path(os.path.join(path, library)))
+            for dep in deps:
+                if dep.soname is None: continue
+                if dep.soname in libraries_in_path or dep.soname.startswith('libFAST.so'):
+                    result.append(os.path.join(path[5:], dep.soname))
+        except RuntimeError:
+            pass
+    return result
+
+def get_all_apple_depedencies(path, libraries):
+    """
+    Because setup can't handle symlinks, we need to handle shared object (.so)
+    dependencies; only include one to avoid duplicates.
+    """
+    import pathlib
+    import subprocess
+
+    def otool(s):
+        framework_path = ''
+        o = subprocess.Popen(['/usr/bin/otool', '-L', s], stdout=subprocess.PIPE)
+
+        for l in o.stdout:
+            l = l.decode()
+
+            if l[0] == '\t':
+                path = l.split(' ', 1)[0][1:]
+
+                if "@executable_path" in path:
+                    path = path.replace("@executable_path", "")
+                    # fudge here to strip /../ from the start of the path.
+                    path = os.path.join(content_folder, path[4:])
+
+                if "@loader_path" in path:
+                    path = path.replace("@loader_path", framework_path)
+
+                if "@rpath" in path:
+                    path = path.replace("@rpath/", framework_path)
+
+                dependency_dylib_name = os.path.split(path)[-1]
+
+                yield path
+
+    result = []
+    libraries_in_path = os.listdir(path)
+    for library in libraries:
+        if not os.path.exists(os.path.join(path, library)): continue
+        if not library.startswith('libFAST.dylib'):
+            result.append(os.path.join(path[5:], library))
+        deps = otool(os.path.join(path, library))
+        print(os.path.join(path, library))
+        for dep in deps:
+            if dep[0] == '/': continue
+            if dep in libraries_in_path or dep.startswith('libFAST.dylib'):
+                result.append(os.path.join(path[5:], dep))
+
+    return result
+
+
+is_windows = sys.platform.startswith('win')
+is_apple = sys.platform.startswith('darwin')
+if is_windows:
+    compile_args = ['/bigobj', '/nologo', '/MD', '/EHsc', '-DNOMINMAX', '-DNOGDI']
+    link_args = []
+    package_data = {'': [
+            'bin/*.dll',
+            'bin/UFFviewer.exe',
+            'bin/runPipeline.exe',
+            'bin/systemCheck.exe',
+            'bin/plugins.xml',
+            'bin/cache.json',
+            'bin/fast_configuration.txt',
+            'README.md',
+            'pipelines/**/*',
+            ] + get_all_filenames('fast/licenses/')
+            + get_all_filenames('fast/kernels/')
+            + get_all_filenames('fast/plugins/')
+            + get_all_filenames('fast/doc/')
+          }
+    additional_libraries = ['OpenCL', '@OPENGL_LIBRARIES@']
+elif is_apple:
+    compile_args = ['-Xclang', '-std=c++17', '-mmacosx-version-min=@OSX_DEPLOYMENT_TARGET@']
+    link_args = ['-bundle', '-Wl,-rpath,@loader_path/../lib', '-framework', 'OpenCL', '-framework', 'OpenGL']
+    package_data = {'': [
+            'lib/plugins.xml',
+            'lib/cache.json',
+            'bin/UFFviewer',
+            'bin/runPipeline',
+            'bin/systemCheck',
+            'bin/fast_configuration.txt',
+            'README.md',
+            'pipelines/**/*',
+            ] + get_all_filenames('fast/licenses/')
+            + get_all_filenames('fast/kernels/')
+            + get_all_filenames('fast/plugins/')
+            + get_all_filenames('fast/doc/')
+            + get_all_apple_depedencies('fast/lib/', [
+                'libFAST.dylib',
+                'libQt5DBus.5.dylib',
+                'libQt5Xml.5.dylib', # Needed for jkqtplotter
+                'libQt5Svg.5.dylib', # Needed for jkqtplotter
+                'libcast.dylib',
+                'libInferenceEngineONNXRuntime.dylib',
+                'libonnxruntime.dylib',
+                'libInferenceEngineTensorFlow.dylib',
+                'libInferenceEngineOpenVINO.dylib',
+                'libinference_engine_ir_reader.so',
+                'libinference_engine_ir_v7_reader.so',
+                'libinference_engine_onnx_reader.so',
+                'libonnx_importer.dylib',
+                'libonnx_proto.dylib',
+                'libprotobuf.3.7.1.0.dylib',
+                'libngraph.dylib',
+                'libMKLDNNPlugin.so',
+                'libmyriadPlugin.so',
+            ])
+          }
+    additional_libraries = []
+    # Override platform tag, or it gets tag 10_15 for some reason
+    sys.argv.append('--plat-name')
+    sys.argv.append('macosx_' + '@OSX_DEPLOYMENT_TARGET@'.replace('.', '_') + '_' + '@OSX_ARCHITECTURE@')
+else:
+    compile_args = ['-std=c++17']
+    link_args = ['-Wl,-rpath=$ORIGIN/../lib']
+    package_data = {'': [
+            'lib/plugins.xml',
+            'lib/cache.json',
+            'bin/UFFviewer',
+            'bin/runPipeline',
+            'bin/systemCheck',
+            'bin/fast_configuration.txt',
+            'README.md',
+            'pipelines/**/*',
+            ] + get_all_filenames('fast/licenses/')
+            + get_all_filenames('fast/kernels/')
+            + get_all_filenames('fast/plugins/')
+            + get_all_filenames('fast/doc/')
+            + get_all_linux_depedencies('fast/lib/', [
+                'libFAST.so', 
+                'libQt5XcbQpa.so.5', 
+                'libQt5MultimediaGstTools.so.5',
+                'libcast.so',
+                # OpenVINO
+                'libInferenceEngineOpenVINO.so',
+                'libinference_engine_ir_reader.so',
+                'libinference_engine_ir__v7_reader.so',
+                'libinference_engine_onnx_reader.so',
+                'libclDNNPlugin.so',
+                'libMKLDNNPlugin.so',
+                'libmyriadPlugin.so',
+                'libInferenceEngineTensorRT.so',
+                'libInferenceEngineTensorFlow.so',
+            ])
+          }
+    additional_libraries = ['OpenCL', '@OPENGL_LIBRARIES@']
+    # Override platform tag
+    sys.argv.append('--plat-name') 
+    sys.argv.append('manylinux1_x86_64')
+
+_fast = Extension('fast.bin._fast',
+                include_dirs=[
+                    '.',
+                    '..',
+                    '@FAST_BINARY_DIR@/include/',
+                    '@FAST_BINARY_DIR@/include/eigen3/',
+                    '@FAST_BINARY_DIR@/include/QWidgets/',
+                    '@FAST_BINARY_DIR@/include/QtCore',
+                    '@FAST_BINARY_DIR@/include/QtWidgets',
+                    '@FAST_BINARY_DIR@/include/QtOpenGL',
+                    '@FAST_BINARY_DIR@/include/QtPrintSupport',
+                    '@FAST_BINARY_DIR@/include/QtGui',
+                    '@FAST_SOURCE_DIR@/source/',
+                    '@NUMPY_INCLUDE_DIR@',
+                ],
+                library_dirs=['@FAST_BINARY_DIR@/lib/'],
+                sources=['fast/PyFASTPYTHON_wrap.cxx'],
+                libraries=[ # Libraries to link with
+                    'FAST',
+                    'Qt5Core',
+                	'Qt5Widgets',
+                	'Qt5Gui',
+                	'Qt5OpenGL',
+                	'Qt5Multimedia',
+                	'Qt5MultimediaWidgets',
+                    'Qt5PrintSupport',
+                    'Qt5Network',
+                ] + additional_libraries,
+                extra_compile_args=compile_args,
+                extra_link_args=link_args,
+                py_limited_api=True
+            )
+
+# Get long description from README
+with open("@FAST_SOURCE_DIR@/README.md", "r", encoding='utf-8') as fh:
+    long_description = fh.read()
+
+version = '@FAST_VERSION@'
+for v in sys.argv: # override version if present
+    if v.startswith('version='):
+        version = v[len('version='):]
+        sys.argv.remove(v) # Remove or setup will be cranky
+        break
+
+setup(name='pyFAST',    # Distribution name
+      version=version,
+      description='Python bindings of FAST - a framework for high performance medical image computing and visualization on heterogeneous systems utilizing multi-core CPUs and GPUs.',
+      long_description=long_description,
+      long_description_content_type="text/markdown",
+      author='Erik Smistad',
+      author_email='ersmistad@gmail.com',
+      url='https://github.com/smistad/FAST',
+      license='BSD 2-clause (package include binary dependencies with other licences, see README)',
+      packages=['fast'],    # Package name
+      setup_requires=['wheel'],
+      ext_modules=[_fast],
+      package_data=package_data,
+      entry_points={'gui_scripts': [
+          'UFFviewer=fast.entry_points:runUFFviewer',
+          'systemCheck=fast.entry_points:runSystemCheck',
+          'runPipeline=fast.entry_points:runRunPipeline',
+      ]},
+      classifiers=[
+        'Development Status :: 4 - Beta',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: C++',
+        'Programming Language :: Python :: 3 :: Only',
+        'Environment :: GPU',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Scientific/Engineering :: Image Processing',
+        'Topic :: Scientific/Engineering :: Medical Science Apps.',
+        'Topic :: Scientific/Engineering :: Visualization',
+      ],
+      install_requires=['numpy'],
+      python_requires='>=3',
+)

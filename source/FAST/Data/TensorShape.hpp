@@ -2,11 +2,19 @@
 
 #include <vector>
 #include <FAST/Object.hpp>
+#include <FAST/Data/DataTypes.hpp>
 
 namespace fast {
 
+/**
+ * @brief Object representing the shape of a Tensor
+ *
+ * @ingroup neural-network
+ * @sa Tensor
+ */
 class FAST_EXPORT TensorShape {
     public:
+#ifndef SWIG
         /**
          * Construct tensor shape
          * @param dimensions
@@ -16,7 +24,8 @@ class FAST_EXPORT TensorShape {
          * Construct tensor shape
          * @param dimensions
          */
-        explicit TensorShape(std::vector<int> dimensions);
+        explicit TensorShape(VectorXi dimensions);
+
         /**
          * Copy constructor
          * @param other
@@ -28,10 +37,12 @@ class FAST_EXPORT TensorShape {
          * @return
          */
         TensorShape& operator=(const TensorShape& other);
+#endif
         /**
-         * Construct empty (invalid) tensor shape
-         */
-        TensorShape();
+        * Construct tensor shape
+        * @param dimensions
+        */
+        explicit TensorShape(std::vector<int> dimensions = std::vector<int>());
         /**
          * If shape is empty or not
          */

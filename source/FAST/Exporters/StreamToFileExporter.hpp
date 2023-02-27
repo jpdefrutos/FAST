@@ -5,9 +5,29 @@
 
 namespace fast {
 
+/**
+ * @brief Write a stream of Mesh or Image data as a sequence of files.
+ *
+ * <h3>Input ports</h3>
+ * - 0: Image or Mesh
+ *
+ * @todo Supports more data types and formats
+ * @ingroup exporters
+ */
 class FAST_EXPORT StreamToFileExporter : public ProcessObject {
-    FAST_OBJECT(StreamToFileExporter)
+    FAST_PROCESS_OBJECT(StreamToFileExporter)
     public:
+        /**
+         * @brief Create instance
+         * @param path Path to folder to store recordings/streams
+         * @param recordingFolderName Name of subfolder to store recordings/files in.
+         *      If not specified a folder with date and time will be used
+         * @return instance
+         */
+        FAST_CONSTRUCTOR(StreamToFileExporter,
+             std::string, path,,
+             std::string, recordingFolderName, = ""
+        );
         void setPath(std::string path);
         void setRecordingFolderName(std::string folder);
         void setFrameFilename(std::string name);

@@ -7,19 +7,20 @@
 #include "FAST/Data/Image.hpp"
 #include <cctype>
 #include <algorithm>
+#include <utility>
 
 namespace fast {
 
 void ImageImporter::execute() {
-    if (mFilename == "")
+    if(m_filename.empty())
         throw Exception("No filename was supplied to the ImageImporter");
 
     uchar* convertedPixelData;
     // Load image from disk using Qt
     QImage image;
     reportInfo() << "Trying to load image..." << Reporter::end();
-    if(!image.load(mFilename.c_str())) {
-        throw FileNotFoundException(mFilename);
+    if(!image.load(m_filename.c_str())) {
+        throw FileNotFoundException(m_filename);
     }
     reportInfo() << "Loaded image with size " << image.width() << " "  << image.height() << Reporter::end();
 
@@ -34,7 +35,6 @@ void ImageImporter::execute() {
     // Get pixel data
     convertedPixelData = convertedImage.bits();
 
-    Image::pointer output = getOutputData<Image>();
     if(convertedImage.width()*convertedImage.depth()/8 != convertedImage.bytesPerLine()) {
         const int bytesPerPixel = (convertedImage.depth()/8);
         std::unique_ptr<uchar[]> fixedPixelData = std::make_unique<uchar[]>(image.width()*image.height()*bytesPerPixel);
@@ -46,7 +46,7 @@ void ImageImporter::execute() {
                     image.width()*bytesPerPixel
             );
         }
-        output->create(
+        auto output = Image::create(
             image.width(),
             image.height(),
             TYPE_UINT8,
@@ -54,8 +54,9 @@ void ImageImporter::execute() {
             getMainDevice(),
             fixedPixelData.get()
         );
+        addOutputData(0, output);
     } else {
-        output->create(
+        auto output = Image::create(
             image.width(),
             image.height(),
             TYPE_UINT8,
@@ -63,23 +64,31 @@ void ImageImporter::execute() {
             getMainDevice(),
             convertedPixelData
         );
+        addOutputData(0, output);
     }
 }
 
+void ImageImporter::loadAttributes() {
+    setFilename(getStringAttribute("filename"));
+    setGrayscale(getBooleanAttribute("grayscale"));
+}
+
 ImageImporter::ImageImporter() {
-    mFilename = "";
-    mIsModified = true;
     mGrayscale = true;
-    createOutputPort<Image>(0);
+    mIsModified = true;
+    createOutputPort(0, "Image");
+    createBooleanAttribute("grayscale", "Grayscale", "Whether to convert image to grayscale or not", mGrayscale);
+}
+
+ImageImporter::ImageImporter(std::string filename, bool convertToGrayscale) : FileImporter(std::move(filename)) {
+    createOutputPort(0, "Image");
+    createBooleanAttribute("grayscale", "Grayscale", "Whether to convert image to grayscale or not", mGrayscale);
+    setGrayscale(convertToGrayscale);
 }
 
 void ImageImporter::setGrayscale(bool grayscale) {
     mGrayscale = grayscale;
-}
-
-void ImageImporter::setFilename(std::string filename) {
-    mFilename = filename;
-    mIsModified = true;
+    setModified(true);
 }
 
 }

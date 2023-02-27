@@ -1,17 +1,26 @@
-#ifndef VTK_SURFACE_FILE_IMPORTER_HPP
-#define VTK_SURFACE_FILE_IMPORTER_HPP
+#pragma once
 
-#include "Importer.hpp"
+#include <FAST/Importers/FileImporter.hpp>
 #include <string>
 #include <map>
 #include <FAST/Data/MeshVertex.hpp>
 
 namespace fast {
 
-class FAST_EXPORT  VTKMeshFileImporter : public Importer {
-    FAST_OBJECT(VTKMeshFileImporter)
+/**
+ * @brief Reads gemoetry mesh data from a .vtk polydata file.
+ *
+ * This importer reads geometry data such as vertices, lines and triangles from the VTK polydata format (.vtk) and
+ * outputs it as a FAST Mesh.
+ *
+ * - Output 0: Mesh
+ *
+ * @ingroup importers
+ */
+class FAST_EXPORT VTKMeshFileImporter : public FileImporter {
+    FAST_PROCESS_OBJECT(VTKMeshFileImporter)
     public:
-        void setFilename(std::string filename);
+        FAST_CONSTRUCTOR(VTKMeshFileImporter, std::string, filename,)
     private:
         VTKMeshFileImporter();
         void execute();
@@ -22,7 +31,6 @@ class FAST_EXPORT  VTKMeshFileImporter : public Importer {
         void processNormals(std::ifstream& file, std::string& line);
         void processVectors(std::ifstream& file, std::string& line);
 
-        std::string mFilename;
         std::vector<MeshVertex> mVertices;
         std::vector<MeshLine> mLines;
         std::vector<MeshTriangle> mTriangles;
@@ -30,5 +38,3 @@ class FAST_EXPORT  VTKMeshFileImporter : public Importer {
 };
 
 } // end namespace fast
-
-#endif

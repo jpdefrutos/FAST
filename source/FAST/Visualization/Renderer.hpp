@@ -1,7 +1,7 @@
 #pragma once
 
 #include "FAST/ProcessObject.hpp"
-#include "FAST/Data/BoundingBox.hpp"
+#include "FAST/Data/DataBoundingBox.hpp"
 #include "FAST/Data/SpatialDataObject.hpp"
 #include <mutex>
 #include <QOpenGLFunctions_3_3_Core>
@@ -9,12 +9,27 @@
 namespace fast {
 
 class View;
-class BoundingBox;
+class RenderToImage;
+class DataBoundingBox;
 
+/**
+ * @defgroup renderers Renderers
+ * Renderers are process objects which can visualize data in a View, typically using OpenGL.
+ * They should be derived from the Renderer class.
+ */
+
+/**
+ * @brief Abstract base class for @ref renderers
+ *
+ * Renderers are process objects which can visualize data in a View, typically using OpenGL.
+ * They should inherit from this class.
+ */
 class FAST_EXPORT  Renderer : public ProcessObject, protected QOpenGLFunctions_3_3_Core {
     public:
-        typedef SharedPointer<Renderer> pointer;
-        virtual void draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D) = 0;
+        typedef std::shared_ptr<Renderer> pointer;
+        virtual void
+        draw(Matrix4f perspectiveMatrix, Matrix4f viewingMatrix, float zNear, float zFar, bool mode2D, int viewWidth,
+             int viewHeight) = 0;
         virtual void postDraw();
         /**
          * Adds a new input connection
@@ -28,7 +43,7 @@ class FAST_EXPORT  Renderer : public ProcessObject, protected QOpenGLFunctions_3
          * @return the input nr of the new connection
          */
         virtual uint addInputData(DataObject::pointer data);
-        virtual BoundingBox getBoundingBox(bool transform = true);
+        virtual DataBoundingBox getBoundingBox(bool transform = true);
         virtual void stopPipeline();
         virtual void reset();
         /**
@@ -42,10 +57,14 @@ class FAST_EXPORT  Renderer : public ProcessObject, protected QOpenGLFunctions_3
          */
         virtual bool isDisabled() const;
         void setView(View* view);
-        void setSynchronizedRendering(bool synched);
+        bool is2DOnly() const;
+        bool is3DOnly() const;
+        void loadAttributes() override;
     protected:
         Renderer();
-        void execute() override;
+        virtual void execute() override;
+        std::unordered_map<uint, std::shared_ptr<SpatialDataObject>> getDataToRender();
+        void clearDataToRender();
 
         /**
          * Creates an OpenGL shader program. Should be used in the renderer constructor.
@@ -60,6 +79,7 @@ class FAST_EXPORT  Renderer : public ProcessObject, protected QOpenGLFunctions_3
         void setShaderUniform(std::string name, Matrix4f matrix, std::string shaderProgramName = "default");
         void setShaderUniform(std::string name, Affine3f matrix, std::string shaderProgramName = "default");
         void setShaderUniform(std::string name, Vector3f vector, std::string shaderProgramName = "default");
+        void setShaderUniform(std::string name, Vector4f vector, std::string shaderProgramName = "default");
         void setShaderUniform(std::string name, float value, std::string shaderProgramName = "default");
         void setShaderUniform(std::string name, bool value, std::string shaderProgramName = "default");
         void setShaderUniform(std::string name, int value, std::string shaderProgramName = "default");
@@ -68,8 +88,6 @@ class FAST_EXPORT  Renderer : public ProcessObject, protected QOpenGLFunctions_3
         // Locking mechanisms to ensure thread safe synchronized rendering
         bool mHasRendered = true;
         bool mStop = false;
-        bool m_synchedRendering = true;
-        std::condition_variable_any mRenderedCV;
         std::mutex mMutex;
 
         /**
@@ -78,27 +96,30 @@ class FAST_EXPORT  Renderer : public ProcessObject, protected QOpenGLFunctions_3
         bool m_disabled = false;
 
         /**
+         * Whether this renderer is only capable of 2D rendering
+         */
+        bool m_2Donly = false;
+        /**
+         * Whether this renderer is only capable of 3D rendering
+         */
+        bool m_3Donly = false;
+
+        /**
          * This holds the current data to render for each input connection
          */
         std::unordered_map<uint, SpatialDataObject::pointer> mDataToRender;
 
-        /**
-         * This will lock the renderer mutex. Used by the compute thread.
-         */
-        void lock();
-        /**
-         * This will unlock the renderer mutex. Used by the compute thread.
-         */
-        void unlock();
         friend class View;
+        friend class RenderToImage;
 
-        View* m_view;
+        View* m_view = nullptr;
     private:
 
         /**
          * OpenGL shader IDs. Program name -> OpenGL ID
          */
         std::unordered_map<std::string, uint> mShaderProgramIDs;
+
 };
 
 }

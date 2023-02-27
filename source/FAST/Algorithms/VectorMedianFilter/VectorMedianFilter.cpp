@@ -4,12 +4,13 @@
 namespace fast {
 
 
-VectorMedianFilter::VectorMedianFilter() {
+VectorMedianFilter::VectorMedianFilter(int size) {
     createInputPort<Image>(0);
     createOutputPort<Image>(0);
 
     createOpenCLProgram(Config::getKernelSourcePath() + "/Algorithms/VectorMedianFilter/VectorMedianFilter.cl");
 
+    setWindowSize(size);
     createIntegerAttribute("window-size", "Window size", "Size of area to perform median filter on", m_windowSize);
 }
 
@@ -19,8 +20,7 @@ void VectorMedianFilter::loadAttributes() {
 
 void VectorMedianFilter::execute() {
     auto input = getInputData<Image>(0);
-    auto output = getOutputData<Image>(0);
-    output->createFromImage(input);
+    auto output = Image::createFromImage(input);
 
     auto device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     auto queue = device->getCommandQueue();
@@ -38,6 +38,7 @@ void VectorMedianFilter::execute() {
         cl::NDRange(input->getWidth(), input->getHeight()),
         cl::NullRange
     );
+    addOutputData(0, output);
 }
 
 void VectorMedianFilter::setWindowSize(int size) {

@@ -38,11 +38,10 @@ inline void executeAlgorithmOnHost(Image::pointer input, Image::pointer output) 
 
 void DoubleFilter::execute() {
     // Get input and output data
-    Image::pointer input = getInputData<Image>();
-    Image::pointer output = getOutputData<Image>();
+    auto input = getInputData<Image>();
 
     // Initialize output image
-    output->createFromImage(input);
+    auto output = Image::createFromImage(input);
 
     if(getMainDevice()->isHost()) {
         // Execution device is Host, use the executeAlgorithmOnHost function with the given data type
@@ -77,6 +76,7 @@ void DoubleFilter::execute() {
                 cl::NullRange
         );
     }
+    addOutputData(0, output);
 }
 
 } // end namespace fast

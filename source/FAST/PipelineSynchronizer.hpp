@@ -5,13 +5,15 @@
 namespace fast {
 
 /**
+ * @brief Synchronize multiple process objects
  * This PO takes in N input connections and creates N output connections.
  * It keeps the last frame of every connection, and every time a connection
  * has a new data frame, it send out the latest frame to all output connections.
  */
 class FAST_EXPORT PipelineSynchronizer : public ProcessObject {
-    FAST_OBJECT(PipelineSynchronizer)
+    FAST_PROCESS_OBJECT(PipelineSynchronizer)
     public:
+        FAST_CONSTRUCTOR(PipelineSynchronizer);
         /**
          * Adds a new input connection
          * @param port
@@ -21,7 +23,7 @@ class FAST_EXPORT PipelineSynchronizer : public ProcessObject {
     protected:
         void execute() override;
 
-        std::unordered_map<uint, SharedPointer<DataObject>> m_latestData;
+        std::unordered_map<uint, std::shared_ptr<DataObject>> m_latestData;
 };
 
 }

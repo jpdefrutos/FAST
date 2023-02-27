@@ -1,4 +1,5 @@
 #include "InferenceEngine.hpp"
+#include <FAST/Utility.hpp>
 
 namespace fast {
 
@@ -15,7 +16,7 @@ std::string InferenceEngine::getFilename() const {
     return m_filename;
 }
 
-bool InferenceEngine::isLoaded() {
+bool InferenceEngine::isLoaded() const {
     return m_isLoaded;
 }
 
@@ -47,20 +48,28 @@ InferenceEngine::NetworkNode InferenceEngine::getOutputNode(std::string name) co
     return mOutputNodes.at(name);
 }
 
-std::unordered_map<std::string, InferenceEngine::NetworkNode> InferenceEngine::getOutputNodes() const {
+std::map<std::string, InferenceEngine::NetworkNode> InferenceEngine::getOutputNodes() const {
     return mOutputNodes;
 }
 
-std::unordered_map<std::string, InferenceEngine::NetworkNode> InferenceEngine::getInputNodes() const {
+std::map<std::string, InferenceEngine::NetworkNode> InferenceEngine::getInputNodes() const {
     return mInputNodes;
 }
 
 
-void InferenceEngine::setInputData(std::string nodeName, SharedPointer<Tensor> tensor) {
+void InferenceEngine::setInputData(std::string nodeName, std::shared_ptr<Tensor> tensor) {
 	mInputNodes.at(nodeName).data = tensor;
 }
 
-SharedPointer<fast::Tensor> InferenceEngine::getOutputData(std::string nodeName) {
+void InferenceEngine::setInputNodeShape(std::string name, TensorShape shape) {
+    mInputNodes.at(name).shape = shape;
+}
+
+void InferenceEngine::setOutputNodeShape(std::string name, TensorShape shape) {
+    mOutputNodes.at(name).shape = shape;
+}
+
+std::shared_ptr<fast::Tensor> InferenceEngine::getOutputData(std::string nodeName) {
     return mOutputNodes.at(nodeName).data;
 }
 
@@ -83,6 +92,63 @@ void InferenceEngine::setMaxBatchSize(int size) {
 
 int InferenceEngine::getMaxBatchSize() {
     return m_maxBatchSize;
+}
+
+void InferenceEngine::loadCustomPlugins(std::vector<std::string> filenames) {
+    throw NotImplementedException();
+}
+
+std::string getModelFileExtension(ModelFormat format) {
+    std::map<ModelFormat, std::string> map = {
+        {ModelFormat::PROTOBUF, "pb"},
+        {ModelFormat::SAVEDMODEL, "/"}, // Saved model format is a directory
+        {ModelFormat::ONNX, "onnx"},
+        {ModelFormat::OPENVINO, "xml"},
+        {ModelFormat::UFF, "uff"}
+    };
+    return map.at(format);
+}
+
+ModelFormat getModelFormat(std::string filename) {
+    if(isDir(filename))
+        return ModelFormat::SAVEDMODEL;
+
+    auto pos = filename.rfind(".") + 1;
+	if(pos == std::string::npos)
+		throw Exception("Unable to determine model format because: Unable to get extension of file " + filename);
+    auto extension = filename.substr(pos);
+    extension = stringToLower(extension);
+    std::map<std::string, ModelFormat> map = {
+        {"pb", ModelFormat::PROTOBUF},
+        {"onnx", ModelFormat::ONNX},
+        {"xml", ModelFormat::OPENVINO},
+        {"uff", ModelFormat::UFF}
+    };
+    if(map.count(extension) == 0)
+        throw Exception("Unable to determine model format of file " + filename);
+
+    return map[extension];
+}
+
+bool InferenceEngine::isModelFormatSupported(ModelFormat format) {
+    auto formats = getSupportedModelFormats();
+    auto pos = std::find(formats.begin(), formats.end(), format);
+    return pos != formats.end();
+}
+
+void InferenceEngine::setImageOrdering(ImageOrdering ordering) {
+    m_imageOrdering = ordering;
+}
+
+std::string getModelFormatName(ModelFormat format) {
+    std::map<ModelFormat, std::string> map = {
+        {ModelFormat::SAVEDMODEL, "TensorFlow SavedModel"},
+        {ModelFormat::PROTOBUF, "TensorFlow Protobuf"},
+        {ModelFormat::ONNX, "ONNX"},
+        {ModelFormat::OPENVINO, "OpenVINO"},
+        {ModelFormat::UFF, "UFF"}
+    };
+    return map.at(format);
 }
 
 }

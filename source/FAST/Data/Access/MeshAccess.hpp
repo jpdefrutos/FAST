@@ -1,5 +1,4 @@
-#ifndef MESHACCESS_HPP_
-#define MESHACCESS_HPP_
+#pragma once
 
 #include <vector>
 #include <FAST/Data/DataTypes.hpp>
@@ -18,7 +17,7 @@ class FAST_EXPORT  MeshAccess {
             std::vector<float>* mColors,
             std::vector<uint>* mLines,
             std::vector<uint>* mTriangles,
-            SharedPointer<Mesh> mesh
+            std::shared_ptr<Mesh> mesh
 		);
         MeshVertex getVertex(uint i);
         void setVertex(uint i, MeshVertex);
@@ -41,10 +40,8 @@ class FAST_EXPORT  MeshAccess {
 		std::vector<float>* mColors;
 		std::vector<uint>* mLines;
 		std::vector<uint>* mTriangles;
-        SharedPointer<Mesh> mMesh;
+        std::shared_ptr<Mesh> mMesh;
 };
 
 } // end namespace fast
 
-
-#endif /* MESHACCESS_HPP_ */

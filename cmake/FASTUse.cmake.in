@@ -12,14 +12,16 @@ include_directories(${FAST_INCLUDE_DIRS})
 link_directories(${FAST_LIBRARY_DIRS})
 
 # Qt MOC setup
+if(${FAST_MODULE_Visualization})
 set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         PROPERTY Qt5Core_VERSION_MAJOR "5")
 set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        PROPERTY Qt5Core_VERSION_MINOR "14")
+        PROPERTY Qt5Core_VERSION_MINOR "15")
 
 add_executable(Qt5::moc IMPORTED)
 set_target_properties(Qt5::moc PROPERTIES IMPORTED_LOCATION "${FAST_BINARY_DIR}moc${CMAKE_EXECUTABLE_SUFFIX}")
 set(CMAKE_AUTOMOC TRUE)
+endif()
 
 if(WIN32)
     # Copy all DLLs from FAST to current binary folder
@@ -39,12 +41,11 @@ if(WIN32)
         )
     endif()
 
-    # Create fast config file
-    set(FILE_CONTENT "TestDataPath = ${FAST_BINARY_DIR}/data/
+    # Create fast config file, windows needs this because the DLLs are copied,
+    # so we can't get base path from the DLL path
+    set(FILE_CONTENT "
     KernelSourcePath = ${FAST_BINARY_DIR}../kernels/
-    KernelBinaryPath = ${FAST_BINARY_DIR}../kernel_binaries/
     DocumentationPath = ${FAST_BINARY_DIR}../doc/
-    PipelinePath = ${FAST_BINARY_DIR}../pipelines/
     LibraryPath = ${FAST_BINARY_DIR}../bin/
     QtPluginsPath = ${FAST_BINARY_DIR}../plugins/")
     file(WRITE ${PROJECT_BINARY_DIR}/Release/fast_configuration.txt ${FILE_CONTENT})

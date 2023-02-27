@@ -1,6 +1,6 @@
 #include "InverseGradientSegmentation.hpp"
 #include "FAST/Data/Image.hpp"
-#include "FAST/Data/Segmentation.hpp"
+#include "FAST/Data/Image.hpp"
 #include "FAST/Utility.hpp"
 
 namespace fast {
@@ -16,31 +16,30 @@ void InverseGradientSegmentation::setVectorFieldInputConnection(
 }
 
 InverseGradientSegmentation::InverseGradientSegmentation() {
-    createInputPort<Segmentation>(0);
+    createInputPort<Image>(0);
     createInputPort<Image>(1);
-    createOutputPort<Segmentation>(0);
+    createOutputPort<Image>(0);
+    createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/TubeSegmentationAndCenterlineExtraction/InverseGradientSegmentation.cl");
 }
 
 void InverseGradientSegmentation::execute() {
-    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
+    auto device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
     bool no3Dwrite = !device->isWritingTo3DTexturesSupported();
-    Segmentation::pointer centerline = getInputData<Segmentation>(0);
+    auto centerline = getInputData<Image>(0);
+    if(!centerline->isSegmentationType())
+        throw Exception("Input centerline must be segmentation image");
     Vector3ui size = centerline->getSize();
-    Image::pointer vectorField = getInputData<Image>(1);
-    Segmentation::pointer segmentation = getOutputData<Segmentation>(0);
-    segmentation->createFromImage(centerline);
+    auto vectorField = getInputData<Image>(1);
+    auto segmentation = Image::createFromImage(centerline);
     SceneGraph::setParentNode(segmentation, centerline);
-    Segmentation::pointer segmentation2 = Segmentation::New();
-    segmentation2->createFromImage(centerline);
+    auto segmentation2 = Image::createFromImage(centerline);
 
     OpenCLImageAccess::pointer centerlineAccess = centerline->getOpenCLImageAccess(ACCESS_READ, device);
     OpenCLImageAccess::pointer vectorFieldAccess = vectorField->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
     OpenCLImageAccess::pointer segmentationOutputAccess = segmentation->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
     cl::Image3D* volume = segmentationOutputAccess->get3DImage();
 
-    device->createProgramFromSourceWithName("inverseGradientSegmentation",
-            Config::getKernelSourcePath() + "Algorithms/TubeSegmentationAndCenterlineExtraction/InverseGradientSegmentation.cl");
-    cl::Program program(device->getProgram("inverseGradientSegmentation"));
+    cl::Program program = getOpenCLProgram(device);
 
 
     cl::Kernel initGrowKernel(program, "initGrowing");
@@ -166,7 +165,7 @@ void InverseGradientSegmentation::execute() {
 
     }
 
-    std::cout << "segmentation result grown in " << i << " iterations" << std::endl;
+    reportInfo() << "Segmentation result grown in " << i << " iterations" << reportEnd();
 
     cl::Kernel dilateKernel(program, "dilate");
     cl::Kernel erodeKernel(program, "erode");
@@ -232,6 +231,7 @@ void InverseGradientSegmentation::execute() {
         );
     }
 
+    addOutputData(0, segmentation);
 }
 
 

@@ -4,18 +4,15 @@
 namespace fast {
 
 
-UltrasoundImageEnhancement::UltrasoundImageEnhancement() {
-    createInputPort<Image>(0);
-
-    createOutputPort<Image>(0);
+UltrasoundImageEnhancement::UltrasoundImageEnhancement(int reject) {
+    createInputPort(0, "Image");
+    createOutputPort(0, "Image");
 
     createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/UltrasoundImageEnhancement/UltrasoundImageEnhancement.cl");
 
     createIntegerAttribute("reject", "Reject", "How many intensity values at bottom to reject.", 40);
 
-    mColormapUploaded = false;
-
-    setReject(40);
+    setReject(reject);
 }
 
 void UltrasoundImageEnhancement::execute() {
@@ -24,14 +21,9 @@ void UltrasoundImageEnhancement::execute() {
         throw Exception("UltrasoundImageEnhancement expects input to be of type UINT8");
     }
 
-    OpenCLDevice::pointer device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
-    if(!mColormapUploaded) {
-        mColormapBuffer = cl::Buffer(device->getContext(), CL_MEM_COPY_HOST_PTR, 256*3*sizeof(uchar), mColormap.data());
-        mColormapUploaded = true;
-    }
+    auto device = std::dynamic_pointer_cast<OpenCLDevice>(getMainDevice());
 
-    Image::pointer output = getOutputData<Image>(0);
-    output->create(input->getSize(), TYPE_UINT8, 3); // Make color image
+    auto output = Image::create(input->getSize(), TYPE_UINT8, 3); // Make color image
     output->setSpacing(input->getSpacing());
 
     cl::CommandQueue queue = device->getCommandQueue();
@@ -42,7 +34,7 @@ void UltrasoundImageEnhancement::execute() {
     OpenCLImageAccess::pointer outputAccess = output->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
     kernel.setArg(0, *inputAccess->get2DImage());
     kernel.setArg(1, *outputAccess->get2DImage());
-    kernel.setArg(2, mColormapBuffer);
+    kernel.setArg(2, m_reject);
 
     queue.enqueueNDRangeKernel(
             kernel,
@@ -50,6 +42,7 @@ void UltrasoundImageEnhancement::execute() {
             cl::NDRange(input->getWidth(), input->getHeight()),
             cl::NullRange
     );
+    addOutputData(0, output);
 }
 
 void UltrasoundImageEnhancement::loadAttributes() {
@@ -57,30 +50,7 @@ void UltrasoundImageEnhancement::loadAttributes() {
 }
 
 void UltrasoundImageEnhancement::setReject(int reject) {
-    mColormap.clear();
-    // Create colormap based on reject
-    float range = (255.0f - (float)reject);
-    for(int x = 0; x < 256; ++x) {
-        int red, green, blue;
-        if(x < reject) {
-            red = 0;
-            green = 0;
-            blue = 0;
-        } else {
-            red = (int)round(((float) (x - reject) / range)*255);
-            green = (int)round(((float) (x - reject) / range)*255) - 1;
-            blue = (int)round(((float) (x - reject) / range)*255) + 4;
-        }
-
-        red = min(max(red, 0), 255);
-        green = min(max(green, 0), 255);
-        blue = min(max(blue, 0), 255);
-        mColormap.push_back((uchar)red);
-        mColormap.push_back((uchar)green);
-        mColormap.push_back((uchar)blue);
-    }
-
-    mColormapUploaded = false;
+    m_reject = reject;
 }
 
 }

@@ -1,18 +1,22 @@
-#ifndef FAST_IMAGE_MULTIPLY_HPP_
-#define FAST_IMAGE_MULTIPLY_HPP_
+#pragma once
 
 #include "FAST/ProcessObject.hpp"
 
 namespace fast {
 
+/**
+ * @brief Multiply two images
+ */
 class FAST_EXPORT  ImageMultiply : public ProcessObject {
-    FAST_OBJECT(ImageMultiply)
+    FAST_PROCESS_OBJECT(ImageMultiply)
     public:
+        /**
+         * @brief Create instance
+         * @return instance
+         */
+        FAST_CONSTRUCTOR(ImageMultiply);
     private:
-        ImageMultiply();
         void execute();
 };
 
 }
-
-#endif

@@ -1,18 +1,24 @@
-#ifndef TIMING_HPP_
-#define TIMING_HPP_
+#pragma once
 
 #include <string>
 #include <memory>
+#include <deque>
 #include "FAST/Object.hpp"
 
 namespace fast {
 /**
- * A class for a runtime measurement
+ * @brief A class for runtime measurement
+ *
+ * Collect multiple runtimes over time, and calculates running average, running standard deviation,
+ * sum, max, min etc.
+ *
+ * All measurements are in milliseconds
+ *
  */
 class FAST_EXPORT  RuntimeMeasurement : public Object {
 public:
-	typedef SharedPointer<RuntimeMeasurement> pointer;
-	RuntimeMeasurement(std::string name);
+	typedef std::shared_ptr<RuntimeMeasurement> pointer;
+	RuntimeMeasurement(std::string name, int warmupRounds = 0, int maximumSamples = -1);
 	void addSample(double runtime);
 	double getSum() const;
 	double getAverage() const;
@@ -21,8 +27,8 @@ public:
 	double getMin() const;
 	double getStdDeviation() const;
 	std::string print() const;
-	virtual ~RuntimeMeasurement() {};
-
+	void reset();
+	~RuntimeMeasurement() override = default;
 private:
 	RuntimeMeasurement();
 
@@ -32,9 +38,13 @@ private:
 	double mRunningMean;
 	double mMin;
 	double mMax;
+	double mFirstSample;
 	std::string mName;
+	int m_warmupRounds;
+	int m_maximumSamples;
+    std::deque<double> m_queueRuntime;
+	std::deque<double> m_queueAvg;
+    std::deque<double> m_queueStd;
 };
 
 }; // end namespace
-
-#endif /* TIMING_HPP_ */

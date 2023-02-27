@@ -4,19 +4,18 @@
 #include "FAST/Utility.hpp"
 #include <fstream>
 #include <set>
-
-#include <zlib.h>
+#include <zlib/zlib.h>
 using namespace fast;
 
-void MetaImageImporter::setFilename(std::string filename) {
-    mFilename = filename;
+MetaImageImporter::MetaImageImporter() {
+    m_filename = "";
     mIsModified = true;
+    createOutputPort(0, "Image");
+    setMainDevice(Host::getInstance()); // Default is to put image on host
 }
 
-MetaImageImporter::MetaImageImporter() {
-    mFilename = "";
-    mIsModified = true;
-    createOutputPort<Image>(0);
+MetaImageImporter::MetaImageImporter(std::string filename) : FileImporter(filename) {
+    createOutputPort(0, "Image");
     setMainDevice(Host::getInstance()); // Default is to put image on host
 }
 
@@ -103,14 +102,14 @@ static std::unique_ptr<T[]> readRawData(std::string rawFilename, std::size_t vox
 }
 
 void MetaImageImporter::execute() {
-    if(mFilename == "")
+    if(m_filename == "")
         throw Exception("Filename was not set in MetaImageImporter");
 
     // Open and parse mhd file
     std::fstream mhdFile;
-    mhdFile.open(mFilename.c_str(), std::fstream::in);
+    mhdFile.open(m_filename.c_str(), std::fstream::in);
     if(!mhdFile.is_open())
-        throw FileNotFoundException(mFilename);
+        throw FileNotFoundException(m_filename);
     std::string line;
     std::string rawFilename;
     bool sizeFound = false,
@@ -142,13 +141,12 @@ void MetaImageImporter::execute() {
     VectorXui size;
     unsigned int nrOfComponents = 1;
     uint64_t timestamp = 0;
-    Image::pointer output = getOutputData<Image>(0);
 
     Vector3f spacing(1,1,1), offset(0,0,0), centerOfRotation(0,0,0);
     Matrix3f transformMatrix = Matrix3f::Identity();
     bool isCompressed = false;
     std::size_t compressedDataSize = 0;
-    std::unordered_map<std::string, std::string> metadata;
+    std::map<std::string, std::string> metadata;
 
     // Blacklist of keys to avoid importing as metadata
     std::set<std::string> blacklist = {
@@ -203,16 +201,16 @@ void MetaImageImporter::execute() {
             rawFilename = rawFilename.substr(0,pos);
 
             // Get path name
-            pos = mFilename.rfind('/');
+            pos = m_filename.rfind('/');
 #ifdef WIN32
 			// Windows often use \ instead of / in pathnames
-			int pos2 = mFilename.rfind('\\');
+			int pos2 = m_filename.rfind('\\');
 			if(pos2 > pos) {
 				pos = pos2;
 			}
 #endif
             if(pos > 0)
-                rawFilename = mFilename.substr(0,pos+1) + rawFilename;
+                rawFilename = m_filename.substr(0,pos+1) + rawFilename;
         } else if(key == "ElementType") {
             typeFound = true;
             typeName = value;
@@ -293,17 +291,30 @@ void MetaImageImporter::execute() {
             std::vector<std::string> values = split(value);
             // Remove any empty values:
             values.erase(std::remove(values.begin(), values.end(), ""), values.end());
-            if(values.size() != 3) {
-                reportError() << "Offset/Origin/Position in MetaImage file did not contain 3 numbers" << reportEnd();
-                reportError() << "Ignoring" << reportEnd();
-            } else {
-                try {
+
+            try {
+                if(imageIs3D){
+                    if(values.size() != 3) {
+                        reportError() << "Offset/Origin/Position in MetaImage file did not contain 3 numbers" << reportEnd();
+                        reportError() << "Ignoring" << reportEnd();
+                    }
                     offset[0] = std::stof(values[0].c_str());
                     offset[1] = std::stof(values[1].c_str());
                     offset[2] = std::stof(values[2].c_str());
-                } catch(std::out_of_range &e) {
-                    reportWarning() << "Out of range exception occured when reading offset values from metaimage file" << reportEnd();
+                } else {
+                    if(values.size() != 2 && values.size() != 3)
+                        throw Exception("Offset/Origin/Position in MetaImage file did not contain 2 or 3 numbers");
+
+                    offset[0] = std::stof(values[0].c_str());
+                    offset[1] = std::stof(values[1].c_str());
+                    if(values.size() == 2) {
+                        offset[2] = 0;
+                    } else {
+                        offset[2] = std::stof(values[2].c_str());
+                    }
                 }
+            } catch(std::out_of_range &e) {
+                reportWarning() << "Out of range exception occured when reading offset values from metaimage file" << reportEnd();
             }
         } else if(key == "TransformMatrix" || key == "Rotation" || key == "Orientation") {
             std::vector<std::string> values = split(value);
@@ -343,6 +354,7 @@ void MetaImageImporter::execute() {
         throw Exception("Error reading the mhd file", __LINE__, __FILE__);
 
 
+    Image::pointer output;
     std::size_t voxels = size.x()*size.y();
     if(size.size() == 3)
         voxels *= size.z();
@@ -359,7 +371,7 @@ void MetaImageImporter::execute() {
 
             data = std::move(tmp2);
         }
-        output->create(size,TYPE_INT16,nrOfComponents,getMainDevice(),std::move(data));
+        output = Image::create(size,TYPE_INT16,nrOfComponents,getMainDevice(),std::move(data));
 
     } else if(typeName == "MET_USHORT" || typeName == "MET_UINT") {
         std::unique_ptr<ushort[]> data;
@@ -374,16 +386,16 @@ void MetaImageImporter::execute() {
 
             data = std::move(tmp2);
         }
-        output->create(size,TYPE_UINT16,nrOfComponents,getMainDevice(),std::move(data));
+        output = Image::create(size,TYPE_UINT16,nrOfComponents,getMainDevice(),std::move(data));
     } else if(typeName == "MET_CHAR") {
         auto data = readRawData<char>(rawFilename, voxels, nrOfComponents, isCompressed, compressedDataSize);
-        output->create(size,TYPE_INT8,nrOfComponents,getMainDevice(),std::move(data));
+        output = Image::create(size,TYPE_INT8,nrOfComponents,getMainDevice(),std::move(data));
     } else if(typeName == "MET_UCHAR") {
         auto data = readRawData<unsigned char>(rawFilename, voxels, nrOfComponents, isCompressed, compressedDataSize);
-        output->create(size,TYPE_UINT8,nrOfComponents,getMainDevice(),std::move(data));
+        output = Image::create(size,TYPE_UINT8,nrOfComponents,getMainDevice(),std::move(data));
     } else if(typeName == "MET_FLOAT") {
         auto data = readRawData<float>(rawFilename, voxels, nrOfComponents, isCompressed, compressedDataSize);
-        output->create(size,TYPE_FLOAT,nrOfComponents,getMainDevice(),std::move(data));
+        output = Image::create(size,TYPE_FLOAT,nrOfComponents,getMainDevice(),std::move(data));
     }
 
     output->setSpacing(spacing);
@@ -397,7 +409,6 @@ void MetaImageImporter::execute() {
 	Affine3f matrix = Affine3f::Identity();
 	matrix.translation() = offset;
 	matrix.linear() = transformMatrix;
-	AffineTransformation::pointer T = AffineTransformation::New();
-	T->setTransform(matrix);
-    output->getSceneGraphNode()->setTransformation(T);
+    output->getSceneGraphNode()->setTransform(matrix);
+    addOutputData(0, output);
 }

@@ -37,8 +37,10 @@ void DummyStreamer::generateStream() {
         auto image = DummyDataObject::New();
         std::cout << "DummyDataObject " << i << " created in streamer" << std::endl;
         image->create(i);
-        if(i == mFramesToGenerate-1)
+        if(i == mFramesToGenerate-1) {
+            std::cout << "Last frame!" << std::endl;
             image->setLastFrame(getNameOfClass());
+        }
         addOutputData(0, image);
         {
             std::unique_lock<std::mutex> lock(mFramesGeneratedMutex);
@@ -75,14 +77,32 @@ void DummyProcessObject2::execute() {
     DummyDataObject::pointer staticInput = getInputData<DummyDataObject>(1);
     mStaticID = staticInput->getID();
 
-    DummyDataObject::pointer output = getOutputData<DummyDataObject>(0);
+    auto output = DummyDataObject::New();
     output->create(dyanmicInput->getID());
+    addOutputData(0, output);
 }
 
 int DummyProcessObject2::getStaticDataID() const {
     return mStaticID;
 }
 
+DummyProcessObject3::DummyProcessObject3() {
+    createInputPort<DummyDataObject>(0);
+    createOutputPort<DummyDataObject>(0);
+    createOutputPort<DummyDataObject>(1);
+}
+
+void DummyProcessObject3::execute() {
+    std::cout << "Executing PO 3" << std::endl;
+    DummyDataObject::pointer dyanmicInput = getInputData<DummyDataObject>(0);
+
+    auto output = DummyDataObject::New();
+    output->create(dyanmicInput->getID());
+    addOutputData(0, output);
+    auto output1 = DummyDataObject::New();
+    output1->create(dyanmicInput->getID());
+    addOutputData(1, output1);
+}
 
 DummyImporter::DummyImporter() {
     createOutputPort<DummyDataObject>(0);
@@ -90,10 +110,11 @@ DummyImporter::DummyImporter() {
 }
 
 void DummyImporter::execute() {
-    auto output = getOutputData<DummyDataObject>(0);
+    auto output = DummyDataObject::New();
     std::cout << "Executing importer to create new object: " << output << std::endl;
     output->create(mExecuted);
     mExecuted++;
+    addOutputData(0, output);
 }
 
 void DummyImporter::setModified() {

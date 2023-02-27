@@ -8,17 +8,42 @@ namespace fast {
 class Image;
 
 /**
+ * @brief Matching metrics for tracking
+ * @ingroup motion-and-tracking
+ */
+enum class MatchingMetric {
+    NORMALIZED_CROSS_CORRELATION,
+    SUM_OF_SQUARED_DIFFERENCES,
+    SUM_OF_ABSOLUTE_DIFFERENCES,
+};
+
+/**
+ * @brief Block matching tracking of an image stream.
+ *
  * 2D block matching on the GPU. Input is a stream of input images, output is a stream of images
  * with 2 channels giving the x,y motion of each pixel.
+ *
+ * @ingroup motion-and-tracking
  */
 class FAST_EXPORT BlockMatching : public ProcessObject {
-    FAST_OBJECT(BlockMatching)
+    FAST_PROCESS_OBJECT(BlockMatching)
     public:
-        enum class MatchingMetric {
-            NORMALIZED_CROSS_CORRELATION,
-            SUM_OF_SQUARED_DIFFERENCES,
-            SUM_OF_ABSOLUTE_DIFFERENCES,
-        };
+        /**
+         * @brief Create instance
+         * @param blockSize Must be odd.
+         * @param searchSize Must be odd.
+         * @param metric Similarity metric to use
+         * @param forwardBackwardTracking Do forward-backward tracking and take average of the two. Will be slover.
+         * @param timeLag How many frames to skip when comparing. Default is 1, comarping frame t vs frame t-1.
+         * @return instance
+         */
+        FAST_CONSTRUCTOR(BlockMatching,
+             int, blockSize, = 11,
+             int, searchSize, = 11,
+             MatchingMetric, metric, = MatchingMetric::SUM_OF_ABSOLUTE_DIFFERENCES,
+             bool, forwardBackwardTracking, = false,
+             int, timeLag, = 1
+         );
 
         /**
          * Convert string of metric to type
@@ -72,7 +97,6 @@ class FAST_EXPORT BlockMatching : public ProcessObject {
         void setRegionOfInterest(Vector2i offset, Vector2i size);
         void loadAttributes() override;
     private:
-        BlockMatching();
         void execute() override;
 
         MatchingMetric m_type = MatchingMetric::SUM_OF_ABSOLUTE_DIFFERENCES;
@@ -83,7 +107,7 @@ class FAST_EXPORT BlockMatching : public ProcessObject {
         bool m_forwardBackward = false;
         Vector2i m_offsetROI = Vector2i::Zero();
         Vector2i m_sizeROI = Vector2i::Zero();
-        std::deque<SharedPointer<Image>> m_frameBuffer;
+        std::deque<std::shared_ptr<Image>> m_frameBuffer;
 
 };
 

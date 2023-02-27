@@ -1,5 +1,4 @@
-#ifndef EXECUTIONDEVICE_HPP_
-#define EXECUTIONDEVICE_HPP_
+#pragma once
 
 #include "FAST/Object.hpp"
 #include "RuntimeMeasurementManager.hpp"
@@ -8,7 +7,7 @@ namespace fast {
 
 class FAST_EXPORT  ExecutionDevice : public Object {
     public:
-        typedef SharedPointer<ExecutionDevice> pointer;
+        typedef std::shared_ptr<ExecutionDevice> pointer;
         bool isHost() {return mIsHost;};
         virtual ~ExecutionDevice() {};
         static std::string getStaticNameOfClass() {
@@ -23,7 +22,7 @@ class FAST_EXPORT  ExecutionDevice : public Object {
 class DeviceManager; // Forward declaration
 class FAST_EXPORT  Host : public ExecutionDevice {
     public:
-        typedef SharedPointer<Host> pointer;
+        typedef std::shared_ptr<Host> pointer;
         static Host::pointer getInstance() {
             static Host::pointer instance = Host::New();
             return instance;
@@ -55,7 +54,8 @@ enum OpenCLPlatformVendor {
     PLATFORM_VENDOR_AMD,
     PLATFORM_VENDOR_INTEL,
     PLATFORM_VENDOR_NVIDIA,
-    PLATFORM_VENDOR_UKNOWN
+    PLATFORM_VENDOR_POCL,
+    PLATFORM_VENDOR_UNKNOWN
 };
 
 enum DeviceVendor {
@@ -82,6 +82,7 @@ class FAST_EXPORT  OpenCLDevice : public ExecutionDevice {
         bool hasProgram(std::string name);
 
         bool isImageFormatSupported(cl_channel_order order, cl_channel_type type, cl_mem_object_type imageType);
+        bool isOpenGLInteropSupported();
 
         //OpenCLPlatformVendor getPlatformVendor();
         //DeviceVendor getDeviceVendor();
@@ -97,6 +98,7 @@ class FAST_EXPORT  OpenCLDevice : public ExecutionDevice {
         std::string getName() {
             return getDevice().getInfo<CL_DEVICE_NAME>();
         }
+        OpenCLPlatformVendor getPlatformVendor();
         bool isWritingTo3DTexturesSupported();
         RuntimeMeasurementsManager::pointer getRunTimeMeasurementManager();
         ~OpenCLDevice();
@@ -122,4 +124,3 @@ class FAST_EXPORT  OpenCLDevice : public ExecutionDevice {
 
 } // end namespace fast
 
-#endif /* EXECUTIONDEVICE_HPP_ */

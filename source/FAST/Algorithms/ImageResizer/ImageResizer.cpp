@@ -37,9 +37,18 @@ void ImageResizer::setPreserveAspectRatio(bool preserve) {
     mPreserveAspectRatio = preserve;
 }
 
+void ImageResizer::loadAttributes() {
+    auto size = getIntegerListAttribute("size");
+    setWidth(size[0]);
+    setHeight(size[1]);
+    if(size.size() == 3)
+        setDepth(size[2]);
+    setInterpolation(getBooleanAttribute("interpolate"));
+}
+
 ImageResizer::ImageResizer() {
-	createInputPort<Image>(0);
-	createOutputPort<Image>(0);
+	createInputPort(0);
+	createOutputPort(0);
 
     createOpenCLProgram(Config::getKernelSourcePath() + "Algorithms/ImageResizer/ImageResizer.cl");
 
@@ -47,18 +56,30 @@ ImageResizer::ImageResizer() {
     mPreserveAspectRatio = false;
     mInterpolationSet = false;
     mInterpolation = true;
+
+    createIntegerAttribute("size", "Size", "Size", 0);
+    createBooleanAttribute("interpolate", "Whether to interpolate", "", mInterpolation);
+}
+
+ImageResizer::ImageResizer(int width, int height, int depth, bool useInterpolation, bool preserveAspectRatio) : ImageResizer() {
+    setWidth(width);
+    setHeight(height);
+    if(depth > 0)
+        setDepth(depth);
+    setInterpolation(useInterpolation);
+    setPreserveAspectRatio(preserveAspectRatio);
 }
 
 void ImageResizer::execute() {
-    Image::pointer input = getInputData<Image>();
-    Image::pointer output = getOutputData<Image>();
+    auto input = getInputData<Image>();
 
     if(mSize.x() <= 0 || mSize.y() <= 0)
     	throw Exception("Desired size must be provided to ImageResizer");
 
     // Initialize output image
+    Image::pointer output;
     if(input->getDimensions() == 2) {
-        output->create(
+        output = Image::create(
                 mSize.x(),
 				mSize.y(),
                 input->getDataType(),
@@ -67,7 +88,7 @@ void ImageResizer::execute() {
     } else {
         if(mSize.z() == 0)
             throw Exception("Desired size must be provided to ImageResizer");
-        output->create(
+        output = Image::create(
                 mSize.cast<uint>(),
                 input->getDataType(),
 				input->getNrOfChannels()
@@ -143,6 +164,7 @@ void ImageResizer::execute() {
                 cl::NullRange
         );
     }
+    addOutputData(0, output);
 }
 
 }

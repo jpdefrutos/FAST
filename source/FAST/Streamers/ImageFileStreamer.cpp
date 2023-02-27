@@ -5,7 +5,16 @@
 namespace fast {
 
 ImageFileStreamer::ImageFileStreamer() {
-    createOutputPort<Image>(0);
+    createOutputPort(0, "Image");
+}
+
+ImageFileStreamer::ImageFileStreamer(std::string filename, bool loop, bool useTimestamps, int framerate) {
+    createOutputPort(0, "Image");
+    setFilenameFormat(filename);
+    if(loop)
+        enableLooping();
+    setUseTimestamp(useTimestamps);
+    setFramerate(framerate);
 }
 
 DataObject::pointer ImageFileStreamer::getDataFrame(std::string filename) {
